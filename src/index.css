@@ -1,0 +1,89 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    min-height: 100dvh;
+  }
+
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  input[type='number'] {
+    -moz-appearance: textfield;
+  }
+}
+
+@layer components {
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-ledger-gold px-6 py-3 text-sm font-semibold text-ledger-bg transition-all duration-200 hover:bg-ledger-gold-dim hover:shadow-glow focus:outline-none focus:ring-2 focus:ring-ledger-gold/50 focus:ring-offset-2 focus:ring-offset-ledger-bg disabled:opacity-50 disabled:pointer-events-none;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-ledger-border bg-ledger-surface px-6 py-3 text-sm font-medium text-ledger-text transition-all duration-200 hover:border-ledger-gold/40 hover:bg-ledger-elevated focus:outline-none focus:ring-2 focus:ring-ledger-gold/30 focus:ring-offset-2 focus:ring-offset-ledger-bg;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-ledger-muted transition-colors hover:bg-ledger-elevated hover:text-ledger-text;
+  }
+
+  .input-field {
+    @apply w-full rounded-xl border border-ledger-border bg-ledger-bg px-4 py-3 text-sm text-ledger-text placeholder:text-ledger-muted/60 transition-colors focus:border-ledger-gold/50 focus:outline-none focus:ring-2 focus:ring-ledger-gold/20;
+  }
+
+  .card {
+    @apply rounded-2xl border border-ledger-border bg-ledger-surface p-6 shadow-card;
+  }
+
+  .label {
+    @apply mb-1.5 block text-xs font-medium uppercase tracking-wider text-ledger-muted;
+  }
+}
+
+/* Light mode overrides */
+html.light {
+  @apply bg-[#f7f5f0] text-[#1a2332];
+}
+
+html.light body {
+  @apply bg-[#f7f5f0] text-[#1a2332];
+}
+
+html.light .card {
+  @apply border-[#d8dce4] bg-white shadow-sm;
+}
+
+html.light .input-field {
+  @apply border-[#d8dce4] bg-white text-[#1a2332];
+}
+
+html.light .btn-secondary {
+  @apply border-[#d8dce4] bg-white text-[#1a2332] hover:bg-[#f0eeea];
+}
+
+html.light .btn-ghost {
+  @apply text-[#5a6578] hover:bg-[#eceae4] hover:text-[#1a2332];
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+  }
+}
