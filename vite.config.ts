@@ -19,4 +19,8 @@ export default defineConfig({
   build: {
     modulePreload: false,
   },
+  test: {
+    environment: 'node',
+    include: ['src/**/*.test.ts'],
+  },
 })

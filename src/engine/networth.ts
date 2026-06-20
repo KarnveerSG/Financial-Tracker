@@ -10,7 +10,7 @@ import type {
   Scenario,
   UserProfile,
 } from '../types'
-import { createId } from './format'
+import { createId, todayISO } from './format'
 import { resolveAccountBalance, sumContributions } from './accounts'
 
 const NW_SHEET_NAME = 'Net Worth Tracker'
@@ -253,6 +253,46 @@ function sortSnapshots(snapshots: NetWorthSnapshot[]): NetWorthSnapshot[] {
   return [...snapshots].sort((a, b) => a.date.localeCompare(b.date))
 }
 
+/** True when snapshot has entered balances (not an empty / placeholder column). */
+export function snapshotHasData(
+  snapshot: NetWorthSnapshot,
+  lineItems: NetWorthLineItem[]
+): boolean {
+  if (Object.values(snapshot.balances).some((value) => value != null && value !== 0)) {
+    return true
+  }
+  const totals = computeSnapshotTotals(snapshot, lineItems)
+  return totals.totalAssets !== 0 || totals.totalLiabilities !== 0
+}
+
+/** Snapshots on or before today that actually contain data — excludes blank future columns. */
+export function getEffectiveSnapshots(
+  snapshots: NetWorthSnapshot[],
+  lineItems: NetWorthLineItem[],
+  asOfDate = todayISO()
+): NetWorthSnapshot[] {
+  return sortSnapshots(snapshots).filter(
+    (snapshot) => snapshot.date <= asOfDate && snapshotHasData(snapshot, lineItems)
+  )
+}
+
+export function getLatestEffectiveSnapshot(
+  snapshots: NetWorthSnapshot[],
+  lineItems: NetWorthLineItem[],
+  asOfDate = todayISO()
+): NetWorthSnapshot | null {
+  const effective = getEffectiveSnapshots(snapshots, lineItems, asOfDate)
+  return effective.at(-1) ?? null
+}
+
+export function getDataThroughDate(
+  snapshots: NetWorthSnapshot[],
+  lineItems: NetWorthLineItem[],
+  asOfDate = todayISO()
+): string | null {
+  return getLatestEffectiveSnapshot(snapshots, lineItems, asOfDate)?.date ?? null
+}
+
 function monthsBetween(start: string, end: string): number {
   const s = new Date(start)
   const e = new Date(end)
@@ -272,11 +312,15 @@ export function computePeriodMetrics(
   startDate: string,
   endDate: string
 ): NetWorthPeriodMetrics | null {
-  const sorted = sortSnapshots(snapshots)
+  const sorted = getEffectiveSnapshots(snapshots, lineItems)
   if (sorted.length === 0) return null
 
+  const effectiveEnd = sorted.at(-1)!.date
+  const cappedEndDate = endDate > effectiveEnd ? effectiveEnd : endDate
+
   const startSnap = sorted.find((s) => s.date >= startDate) ?? sorted[0]
-  const endSnap = [...sorted].reverse().find((s) => s.date <= endDate) ?? sorted[sorted.length - 1]
+  const endSnap =
+    [...sorted].reverse().find((s) => s.date <= cappedEndDate) ?? sorted[sorted.length - 1]
   const startTotals = computeSnapshotTotals(startSnap, lineItems)
   const endTotals = computeSnapshotTotals(endSnap, lineItems)
 
@@ -323,10 +367,13 @@ export function computePeriodMetrics(
   }
 }
 
-export function getDateRangePresets(snapshots: NetWorthSnapshot[]): Record<string, { start: string; end: string }> {
-  const sorted = sortSnapshots(snapshots)
+export function getDateRangePresets(
+  snapshots: NetWorthSnapshot[],
+  lineItems: NetWorthLineItem[]
+): Record<string, { start: string; end: string }> {
+  const sorted = getEffectiveSnapshots(snapshots, lineItems)
   if (sorted.length === 0) {
-    const today = new Date().toISOString().slice(0, 10)
+    const today = todayISO()
     return { all: { start: today, end: today } }
   }
 
@@ -354,7 +401,7 @@ export function buildNetWorthHistorySeries(
   snapshots: NetWorthSnapshot[],
   lineItems: NetWorthLineItem[]
 ): NetWorthChartPoint[] {
-  return sortSnapshots(snapshots).map((snapshot) => {
+  return getEffectiveSnapshots(snapshots, lineItems).map((snapshot) => {
     const totals = computeSnapshotTotals(snapshot, lineItems)
     return {
       label: snapshot.date,
@@ -480,14 +527,16 @@ export function parseNwTrackerXlsx(buffer: ArrayBuffer): NetWorthImportResult {
     }
   }
 
-  const snapshots: NetWorthSnapshot[] = dateColumns.map(({ col, date }) => {
-    const balances: Record<string, number> = {}
-    for (const { item, rowIndex } of balanceRows) {
-      const value = parseCellValue(rows[rowIndex]?.[col])
-      if (value != null) balances[item.id] = value
-    }
-    return { id: createId(), date, balances }
-  })
+  const snapshots: NetWorthSnapshot[] = dateColumns
+    .map(({ col, date }) => {
+      const balances: Record<string, number> = {}
+      for (const { item, rowIndex } of balanceRows) {
+        const value = parseCellValue(rows[rowIndex]?.[col])
+        if (value != null) balances[item.id] = value
+      }
+      return { id: createId(), date, balances }
+    })
+    .filter((snapshot) => snapshotHasData(snapshot, lineItems))
 
   return { lineItems, snapshots }
 }
@@ -607,7 +656,10 @@ export function mapAccountsToSnapshotBalances(
 }
 
 export function getLatestSnapshotTotals(scenario: Scenario): SnapshotTotals | null {
-  const sorted = sortSnapshots(scenario.netWorthSnapshots ?? [])
-  if (sorted.length === 0) return null
-  return computeSnapshotTotals(sorted[sorted.length - 1], scenario.netWorthLineItems ?? [])
+  const latest = getLatestEffectiveSnapshot(
+    scenario.netWorthSnapshots ?? [],
+    scenario.netWorthLineItems ?? []
+  )
+  if (!latest) return null
+  return computeSnapshotTotals(latest, scenario.netWorthLineItems ?? [])
 }

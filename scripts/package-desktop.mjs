@@ -1,11 +1,11 @@
 ﻿import { execSync } from "node:child_process";
-import { appendFileSync, copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { mkdirSync, copyFileSync, existsSync, appendFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import os from "node:os";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const artifactName = "Midnight Ledger.exe";
+const installDir = "E:\\Applications";
 const projectLogDir = join(root, "logs");
 const projectLogPath = join(projectLogDir, "package-desktop.log");
 
@@ -33,7 +33,16 @@ try {
     process.exit(1);
   }
 
-  const dest = join(os.homedir(), "Desktop", artifactName);
+  mkdirSync(installDir, { recursive: true });
+  const dest = join(installDir, artifactName);
+  try {
+    execSync(`powershell -NoProfile -Command "Get-Process -Name 'Midnight Ledger' -ErrorAction SilentlyContinue | Stop-Process -Force"`, {
+      stdio: "ignore",
+      shell: true,
+    });
+  } catch {
+    /* not running */
+  }
   copyFileSync(src, dest);
   log(`COPIED ${dest}`);
   log("PASS package:desktop");

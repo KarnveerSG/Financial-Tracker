@@ -8,7 +8,9 @@ import {
   buildNetWorthProjectionOverlay,
   computePeriodMetrics,
   computeSnapshotTotals,
+  getDataThroughDate,
   getDateRangePresets,
+  getEffectiveSnapshots,
   getLatestSnapshotTotals,
   netWorthSnapshotsToCsv,
 } from '../engine/networth'
@@ -53,9 +55,13 @@ export function NetWorthPage() {
   const [manualDate, setManualDate] = useState(new Date().toISOString().slice(0, 10))
 
   const { profile, netWorthLineItems, netWorthSnapshots, accounts } = scenario
-  const sortedSnapshots = useMemo(
-    () => [...netWorthSnapshots].sort((a, b) => a.date.localeCompare(b.date)),
-    [netWorthSnapshots]
+  const effectiveSnapshots = useMemo(
+    () => getEffectiveSnapshots(netWorthSnapshots, netWorthLineItems),
+    [netWorthSnapshots, netWorthLineItems]
+  )
+  const dataThroughDate = useMemo(
+    () => getDataThroughDate(netWorthSnapshots, netWorthLineItems),
+    [netWorthSnapshots, netWorthLineItems]
   )
 
   const latestTotals = useMemo(
@@ -64,8 +70,8 @@ export function NetWorthPage() {
   )
 
   const rangePresets = useMemo(
-    () => getDateRangePresets(netWorthSnapshots),
-    [netWorthSnapshots]
+    () => getDateRangePresets(netWorthSnapshots, netWorthLineItems),
+    [netWorthSnapshots, netWorthLineItems]
   )
 
   const selectedRange = rangePresets[rangePreset] ?? rangePresets.all
@@ -133,7 +139,7 @@ export function NetWorthPage() {
   }
 
   const handleExportCsv = () => {
-    const csv = netWorthSnapshotsToCsv(netWorthLineItems, netWorthSnapshots)
+    const csv = netWorthSnapshotsToCsv(netWorthLineItems, effectiveSnapshots)
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -143,7 +149,7 @@ export function NetWorthPage() {
     URL.revokeObjectURL(url)
   }
 
-  const empty = sortedSnapshots.length === 0
+  const empty = effectiveSnapshots.length === 0
 
   return (
     <div>
@@ -204,6 +210,9 @@ export function NetWorthPage() {
         {importError && <p className="mt-2 text-sm text-ledger-danger">{importError}</p>}
         <p className="mt-3 text-sm text-ledger-muted">
           Import your NW Tracker workbook — the app reads the &quot;Net Worth Tracker&quot; sheet format.
+          {dataThroughDate && (
+            <> Empty or future month columns are ignored. Data through <strong>{dataThroughDate}</strong>.</>
+          )}
         </p>
       </SectionCard>
 
@@ -236,7 +245,7 @@ export function NetWorthPage() {
             <MetricCard
               label="Net Worth"
               value={formatCurrency(latestTotals?.netWorth ?? 0, profile.currency)}
-              sub={sortedSnapshots.at(-1)?.date}
+              sub={dataThroughDate ? `As of ${dataThroughDate}` : undefined}
             />
             <MetricCard
               label="Period Change"
@@ -313,11 +322,11 @@ export function NetWorthPage() {
                 <thead>
                   <tr className="border-b border-ledger-border text-ledger-muted">
                     <th className="sticky left-0 bg-ledger-surface px-3 py-2">Account</th>
-                    {sortedSnapshots.map((snapshot) => (
+                    {effectiveSnapshots.map((snapshot) => (
                       <th key={snapshot.id} className="px-3 py-2 whitespace-nowrap">
                         <div className="flex items-center gap-1">
                           <span>{snapshot.date}</span>
-                          {sortedSnapshots.length > 1 && (
+                          {effectiveSnapshots.length > 1 && (
                             <button
                               type="button"
                               className="text-xs text-ledger-danger hover:underline"
@@ -344,7 +353,7 @@ export function NetWorthPage() {
                           >
                             {item.name}
                           </td>
-                          {sortedSnapshots.map((snapshot) => (
+                          {effectiveSnapshots.map((snapshot) => (
                             <td key={snapshot.id} className="px-3 py-1.5">
                               <input
                                 type="number"
@@ -374,7 +383,7 @@ export function NetWorthPage() {
                         >
                           {item.name}
                         </td>
-                        {sortedSnapshots.map((snapshot) => (
+                        {effectiveSnapshots.map((snapshot) => (
                           <td key={snapshot.id} className="px-3 py-1.5">
                             <input
                               type="number"
@@ -397,7 +406,7 @@ export function NetWorthPage() {
                   })}
                   <tr className="border-t border-ledger-border font-medium">
                     <td className="sticky left-0 bg-ledger-surface px-3 py-2">Net Worth</td>
-                    {sortedSnapshots.map((snapshot) => {
+                    {effectiveSnapshots.map((snapshot) => {
                       const totals = computeSnapshotTotals(snapshot, netWorthLineItems)
                       return (
                         <td key={snapshot.id} className="px-3 py-2">

@@ -11,7 +11,12 @@
     "build:win": "npm run build:web && electron-builder --win portable",
     "make:icon": "node scripts/make-icon.mjs",
     "verify:desktop": "npm run build:web && npx electron scripts/electron-smoke-test.cjs",
-    "package:desktop": "node scripts/package-desktop.mjs"
+    "package:desktop": "node scripts/package-desktop.mjs",
+    "test": "vitest run",
+    "test:parser": "npx tsx scripts/verify-parser.ts",
+    "test:e2e": "npm run build:web && npx electron scripts/desktop-e2e.cjs",
+    "test:packaged": "node scripts/packaged-launch-test.cjs",
+    "test:all": "npm run test && npm run test:parser && npm run verify:desktop"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -35,8 +40,10 @@
     "electron-builder": "^25.1.8",
     "postcss": "^8.5.1",
     "tailwindcss": "^3.4.17",
+    "tsx": "^4.22.4",
     "typescript": "^5.7.3",
-    "vite": "^6.0.7"
+    "vite": "^6.0.7",
+    "vitest": "^4.1.9"
   },
   "main": "electron/main.cjs",
   "build": {
