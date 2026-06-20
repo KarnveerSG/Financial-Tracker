@@ -27,7 +27,7 @@ const fail = (reason) => {
 };
 
 const pass = () => {
-  log("PASS: onboarding -> dashboard");
+  log("PASS: onboarding -> dashboard -> net-worth");
   flush();
   app.exit(0);
 };
@@ -92,6 +92,21 @@ app.whenReady().then(async () => {
       "dashboard"
     );
     if (!dashboardOk) fail("dashboard never appeared after Get started");
+
+    log("navigate to net-worth");
+    await win.webContents.executeJavaScript(`
+      window.location.hash = "#/net-worth";
+    `);
+
+    const netWorthOk = await waitFor(
+      win,
+      async () => {
+        const text = await readBody(win, 1200);
+        return text.includes("Net Worth Tracker") && text.includes("Import .xlsx");
+      },
+      "net-worth"
+    );
+    if (!netWorthOk) fail("net worth page never appeared");
 
     pass();
   } catch (err) {

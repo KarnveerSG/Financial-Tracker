@@ -3,6 +3,7 @@ import { BrowserRouter, HashRouter, Navigate, Route, Routes } from 'react-router
 import { AppLayout } from './components/layout/AppLayout'
 import { OnboardingPage } from './pages/OnboardingPage'
 import { DashboardPage } from './pages/DashboardPage'
+import { NetWorthPage } from './pages/NetWorthPage'
 import { AccountsPage } from './pages/AccountsPage'
 import { ProjectionsPage } from './pages/ProjectionsPage'
 import { FirePage } from './pages/FirePage'
@@ -74,6 +75,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={<OnboardingPage />} />
       <Route path="/dashboard" element={<Protected><DashboardPage /></Protected>} />
+      <Route path="/net-worth" element={<Protected><NetWorthPage /></Protected>} />
       <Route path="/accounts" element={<Protected><AccountsPage /></Protected>} />
       <Route path="/projections" element={<Protected><ProjectionsPage /></Protected>} />
       <Route path="/fire" element={<Protected><FirePage /></Protected>} />

@@ -5,6 +5,8 @@ import type {
   AllocationCategoryDef,
   AppState,
   BudgetInputs,
+  NetWorthLineItem,
+  NetWorthSnapshot,
   PaycheckInputs,
   ProjectionAssumptions,
   FireSettings,
@@ -17,6 +19,19 @@ import type {
 import { DEFAULT_ALLOCATION_CATEGORIES, DEFAULT_BUDGET_CATEGORIES } from '../types'
 import { createDefaultAccount } from '../engine/accounts'
 import { createId } from '../engine/format'
+
+if (
+  typeof localStorage !== 'undefined' &&
+  !localStorage.getItem('midnight-ledger-v3') &&
+  localStorage.getItem('midnight-ledger-v2')
+) {
+  localStorage.setItem('midnight-ledger-v3', localStorage.getItem('midnight-ledger-v2')!)
+}
+import {
+  buildLineItemsFromAccounts,
+  mapAccountsToSnapshotBalances,
+  parseNwTrackerXlsx,
+} from '../engine/networth'
 
 function defaultProfile(): UserProfile {
   return {
@@ -97,6 +112,8 @@ function migrateScenario(scenario?: Scenario): Scenario {
     ...scenario,
     accounts: (scenario.accounts ?? []).map(migrateAccount),
     budgetInputs: scenario.budgetInputs ?? defaultBudgetInputs(),
+    netWorthLineItems: scenario.netWorthLineItems ?? [],
+    netWorthSnapshots: scenario.netWorthSnapshots ?? [],
   }
 }
 
@@ -125,6 +142,8 @@ export function createScenario(name = 'Base Case'): Scenario {
     allocationCategories: [...DEFAULT_ALLOCATION_CATEGORIES],
     savingsHistory: [],
     budgetInputs: defaultBudgetInputs(),
+    netWorthLineItems: [],
+    netWorthSnapshots: [],
   }
 }
 
@@ -174,6 +193,16 @@ interface FinanceStore extends AppState {
   completeOnboarding: () => void
   toggleLightMode: () => void
   getActiveScenario: () => Scenario
+  importNetWorthFromXlsx: (buffer: ArrayBuffer) => void
+  setNetWorthData: (lineItems: NetWorthLineItem[], snapshots: NetWorthSnapshot[]) => void
+  addNetWorthSnapshot: (date: string, balances?: Record<string, number>) => void
+  updateNetWorthSnapshot: (id: string, partial: Partial<Pick<NetWorthSnapshot, 'date' | 'balances'>>) => void
+  removeNetWorthSnapshot: (id: string) => void
+  updateNetWorthBalance: (snapshotId: string, lineItemId: string, value: number | null) => void
+  addNetWorthLineItem: (item: Omit<NetWorthLineItem, 'id' | 'sortOrder'>) => void
+  updateNetWorthLineItem: (id: string, partial: Partial<NetWorthLineItem>) => void
+  removeNetWorthLineItem: (id: string) => void
+  recordNetWorthFromAccounts: (date?: string) => void
 }
 
 const initialScenario = createScenario()
@@ -250,7 +279,32 @@ export const useFinanceStore = create<FinanceStore>()(
       duplicateScenario: (id) => {
         const source = get().scenarios.find((s) => s.id === id)
         if (!source) return
-        const copy = { ...source, id: createId(), name: `${source.name} (copy)`, accounts: source.accounts.map((a) => ({ ...a, id: createId() })) }
+        const lineItemIdMap = new Map<string, string>()
+        const newLineItems = (source.netWorthLineItems ?? []).map((item) => {
+          const newId = createId()
+          lineItemIdMap.set(item.id, newId)
+          return { ...item, id: newId }
+        })
+        for (const item of newLineItems) {
+          if (item.parentId) item.parentId = lineItemIdMap.get(item.parentId) ?? null
+        }
+        const copy: Scenario = {
+          ...source,
+          id: createId(),
+          name: `${source.name} (copy)`,
+          accounts: source.accounts.map((a) => ({ ...a, id: createId() })),
+          netWorthLineItems: newLineItems,
+          netWorthSnapshots: (source.netWorthSnapshots ?? []).map((snap) => ({
+            ...snap,
+            id: createId(),
+            balances: Object.fromEntries(
+              Object.entries(snap.balances).map(([key, value]) => [
+                lineItemIdMap.get(key) ?? createId(),
+                value,
+              ])
+            ),
+          })),
+        }
         set((s) => ({ scenarios: [...s.scenarios, copy], activeScenarioId: copy.id }))
       },
 
@@ -374,9 +428,133 @@ export const useFinanceStore = create<FinanceStore>()(
           ...s,
           profile: { ...s.profile, lightMode: !s.profile.lightMode },
         })),
+
+      importNetWorthFromXlsx: (buffer) => {
+        const { lineItems, snapshots } = parseNwTrackerXlsx(buffer)
+        get().updateActiveScenario((s) => ({
+          ...s,
+          netWorthLineItems: lineItems,
+          netWorthSnapshots: snapshots,
+        }))
+      },
+
+      setNetWorthData: (lineItems, snapshots) =>
+        get().updateActiveScenario((s) => ({
+          ...s,
+          netWorthLineItems: lineItems,
+          netWorthSnapshots: snapshots,
+        })),
+
+      addNetWorthSnapshot: (date, balances) =>
+        get().updateActiveScenario((s) => {
+          const existing = s.netWorthSnapshots.find((snap) => snap.date === date)
+          if (existing) {
+            return {
+              ...s,
+              netWorthSnapshots: s.netWorthSnapshots.map((snap) =>
+                snap.id === existing.id
+                  ? { ...snap, balances: balances ?? snap.balances }
+                  : snap
+              ),
+            }
+          }
+          const latest = [...s.netWorthSnapshots].sort((a, b) => a.date.localeCompare(b.date)).at(-1)
+          return {
+            ...s,
+            netWorthSnapshots: [
+              ...s.netWorthSnapshots,
+              {
+                id: createId(),
+                date,
+                balances: balances ?? latest?.balances ?? {},
+              },
+            ],
+          }
+        }),
+
+      updateNetWorthSnapshot: (id, partial) =>
+        get().updateActiveScenario((s) => ({
+          ...s,
+          netWorthSnapshots: s.netWorthSnapshots.map((snap) =>
+            snap.id === id ? { ...snap, ...partial } : snap
+          ),
+        })),
+
+      removeNetWorthSnapshot: (id) =>
+        get().updateActiveScenario((s) => ({
+          ...s,
+          netWorthSnapshots: s.netWorthSnapshots.filter((snap) => snap.id !== id),
+        })),
+
+      updateNetWorthBalance: (snapshotId, lineItemId, value) =>
+        get().updateActiveScenario((s) => ({
+          ...s,
+          netWorthSnapshots: s.netWorthSnapshots.map((snap) => {
+            if (snap.id !== snapshotId) return snap
+            const balances = { ...snap.balances }
+            if (value == null || Number.isNaN(value)) delete balances[lineItemId]
+            else balances[lineItemId] = value
+            return { ...snap, balances }
+          }),
+        })),
+
+      addNetWorthLineItem: (item) =>
+        get().updateActiveScenario((s) => ({
+          ...s,
+          netWorthLineItems: [
+            ...s.netWorthLineItems,
+            {
+              ...item,
+              id: createId(),
+              sortOrder: s.netWorthLineItems.length,
+            },
+          ],
+        })),
+
+      updateNetWorthLineItem: (id, partial) =>
+        get().updateActiveScenario((s) => ({
+          ...s,
+          netWorthLineItems: s.netWorthLineItems.map((item) =>
+            item.id === id ? { ...item, ...partial } : item
+          ),
+        })),
+
+      removeNetWorthLineItem: (id) =>
+        get().updateActiveScenario((s) => ({
+          ...s,
+          netWorthLineItems: s.netWorthLineItems.filter((item) => item.id !== id),
+          netWorthSnapshots: s.netWorthSnapshots.map((snap) => {
+            const balances = { ...snap.balances }
+            delete balances[id]
+            return { ...snap, balances }
+          }),
+        })),
+
+      recordNetWorthFromAccounts: (date) => {
+        const scenario = get().getActiveScenario()
+        const snapshotDate = date ?? new Date().toISOString().slice(0, 10)
+        let lineItems =
+          scenario.netWorthLineItems.length > 0
+            ? [...scenario.netWorthLineItems]
+            : buildLineItemsFromAccounts(scenario.accounts)
+        const balances = mapAccountsToSnapshotBalances(scenario.accounts, lineItems)
+        get().updateActiveScenario((s) => ({
+          ...s,
+          netWorthLineItems: lineItems,
+          netWorthSnapshots: (() => {
+            const existing = s.netWorthSnapshots.find((snap) => snap.date === snapshotDate)
+            if (existing) {
+              return s.netWorthSnapshots.map((snap) =>
+                snap.id === existing.id ? { ...snap, balances } : snap
+              )
+            }
+            return [...s.netWorthSnapshots, { id: createId(), date: snapshotDate, balances }]
+          })(),
+        }))
+      },
     }),
     {
-      name: 'midnight-ledger-v2',
+      name: 'midnight-ledger-v3',
       onRehydrateStorage: () => (state) => {
         if (state) {
           state.scenarios = state.scenarios.map(migrateScenario)
@@ -413,10 +591,10 @@ export interface FinanceBackend {
 
 export const localBackend: FinanceBackend = {
   save: async (state) => {
-    localStorage.setItem('midnight-ledger-v2', JSON.stringify({ state }))
+    localStorage.setItem('midnight-ledger-v3', JSON.stringify({ state }))
   },
   load: async () => {
-    const raw = localStorage.getItem('midnight-ledger-v2')
+    const raw = localStorage.getItem('midnight-ledger-v3')
     if (!raw) return null
     const parsed = JSON.parse(raw)
     return parsed.state ?? parsed

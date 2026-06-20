@@ -3,6 +3,7 @@ import { useFinanceStore } from '../../store/useFinanceStore'
 
 const NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: '◈' },
+  { to: '/net-worth', label: 'Net Worth', icon: '◆' },
   { to: '/accounts', label: 'Accounts', icon: '▤' },
   { to: '/projections', label: 'Projections', icon: '↗' },
   { to: '/fire', label: 'FIRE & CoastFI', icon: '◎' },

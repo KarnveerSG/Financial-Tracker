@@ -139,6 +139,27 @@ export interface SavingsRateSnapshot {
   savings: number
 }
 
+export type NetWorthLineKind = 'section' | 'group' | 'account' | 'total'
+export type NetWorthSide = 'asset' | 'liability'
+
+export interface NetWorthLineItem {
+  id: string
+  name: string
+  parentId: string | null
+  kind: NetWorthLineKind
+  side: NetWorthSide
+  accountType?: AccountType
+  sortOrder: number
+  /** When true, balance rolls into snapshot totals (matches NW Tracker Excel formulas). */
+  includeInTotal?: boolean
+}
+
+export interface NetWorthSnapshot {
+  id: string
+  date: string
+  balances: Record<string, number>
+}
+
 export interface Scenario {
   id: string
   name: string
@@ -152,6 +173,8 @@ export interface Scenario {
   allocationCategories: AllocationCategoryDef[]
   savingsHistory: SavingsRateSnapshot[]
   budgetInputs: BudgetInputs
+  netWorthLineItems: NetWorthLineItem[]
+  netWorthSnapshots: NetWorthSnapshot[]
 }
 
 export interface AppState {
