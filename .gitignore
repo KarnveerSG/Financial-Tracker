@@ -2,6 +2,9 @@
 logs
 *.log
 npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
 # Dependencies
 node_modules
@@ -15,8 +18,13 @@ build/icon-source.png
 
 # TypeScript
 tsconfig.tsbuildinfo
+*.tsbuildinfo
 
-# Editor
+# Test / coverage
+coverage
+.vitest
+
+# Editor / IDE
 .vscode/*
 !.vscode/extensions.json
 .idea
@@ -26,13 +34,23 @@ tsconfig.tsbuildinfo
 *.sln
 *.sw?
 
+# Cursor / local agent config
+.cursor/
+.claude/settings.local.json
+
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# Env
+# Env / secrets
 .env
 .env.*
 !.env.example
 
-docs/*
+# Local docs artifacts (keep markdown plans in repo)
+docs/screenshots/
+docs/**/*.png
+docs/**/*.jpg
+docs/**/*.jpeg
+docs/**/*.webp
