@@ -1,13 +1,20 @@
 import { describe, expect, it } from 'vitest'
 import type { NetWorthLineItem, NetWorthSnapshot } from '../types'
+import { createDefaultAccount } from './accounts'
 import {
+  buildNetWorthHistorySeries,
   computePeriodMetrics,
   computeSnapshotTotals,
+  filterSnapshotsForWindow,
   getDataThroughDate,
   getEffectiveSnapshots,
   getLatestEffectiveSnapshot,
+  getPortfolioBreakdown,
+  isInvestmentLineItem,
+  netWorthSnapshotsToCsv,
   snapshotHasData,
 } from './networth'
+import { DEFAULT_ALLOCATION_CATEGORIES } from '../types'
 
 function fixtureLineItems(): NetWorthLineItem[] {
   return [
@@ -160,5 +167,92 @@ describe('computePeriodMetrics', () => {
     expect(metrics!.endDate).toBe('2026-06-01')
     expect(metrics!.endNetWorth).toBeGreaterThan(0)
     expect(metrics!.percentChange).toBeGreaterThan(-0.99)
+  })
+})
+
+describe('isInvestmentLineItem', () => {
+  const base = (name: string, accountType?: NetWorthLineItem['accountType']): NetWorthLineItem => ({
+    id: 'x',
+    name,
+    parentId: null,
+    kind: 'account',
+    side: 'asset',
+    sortOrder: 0,
+    accountType,
+  })
+
+  it('treats Savings (Equity) as investment', () => {
+    expect(isInvestmentLineItem(base('Savings (Equity)'))).toBe(true)
+  })
+
+  it('excludes Chase Checking', () => {
+    expect(isInvestmentLineItem(base('Chase Checking', 'checking'))).toBe(false)
+  })
+
+  it('includes Roth IRA accounts', () => {
+    expect(isInvestmentLineItem(base('Roth IRA – Fidelity', 'roth_ira'))).toBe(true)
+  })
+})
+
+describe('filterSnapshotsForWindow', () => {
+  it('limits visible snapshots without changing history series', () => {
+    const lineItems = fixtureLineItems()
+    const snapshots: NetWorthSnapshot[] = Array.from({ length: 10 }, (_, i) => ({
+      id: `s${i}`,
+      date: `2025-${String(i + 1).padStart(2, '0')}-01`,
+      balances: { 'g-taxable': 1000 * (i + 1), 'g-cash': 500 },
+    }))
+
+    const effective = getEffectiveSnapshots(snapshots, lineItems, '2026-12-31')
+    const windowed = filterSnapshotsForWindow(effective, 6)
+    const history = buildNetWorthHistorySeries(snapshots, lineItems)
+
+    expect(windowed).toHaveLength(6)
+    expect(history.length).toBe(effective.length)
+  })
+})
+
+describe('getPortfolioBreakdown', () => {
+  it('returns expected tax bucket and ticker totals', () => {
+    const accounts = [
+      createDefaultAccount({
+        name: '401k',
+        accountType: '401k',
+        balance: 50000,
+        allocationCategory: 'pretax',
+        taxTreatment: 'pretax',
+      }),
+      createDefaultAccount({
+        name: 'Brokerage',
+        accountType: 'brokerage',
+        balance: 30000,
+        allocationCategory: 'taxable_brokerage',
+        taxTreatment: 'taxable',
+        holdings: [
+          { id: 'h1', ticker: 'VTI', shares: 50, pricePerShare: 240 },
+          { id: 'h2', ticker: 'AAPL', shares: 20, pricePerShare: 190 },
+        ],
+        syncBalanceFromHoldings: true,
+      }),
+    ]
+
+    const breakdown = getPortfolioBreakdown(accounts, DEFAULT_ALLOCATION_CATEGORIES)
+    const pretax = breakdown.byTaxBucket.find((b) => b.label === 'Pretax')
+    expect(pretax?.value).toBe(50000)
+
+    const vti = breakdown.byTicker.find((t) => t.ticker === 'VTI')
+    expect(vti?.marketValue).toBe(12000)
+
+    const pretaxTreatment = breakdown.byTreatment.find((t) => t.label === 'Pretax')
+    expect(pretaxTreatment?.value).toBe(50000)
+  })
+})
+
+describe('netWorthSnapshotsToCsv', () => {
+  it('includes export timestamp header', () => {
+    const lineItems = fixtureLineItems()
+    const snapshots = fixtureSnapshots().slice(0, 1)
+    const csv = netWorthSnapshotsToCsv(lineItems, snapshots)
+    expect(csv.startsWith('# Exported ')).toBe(true)
   })
 })

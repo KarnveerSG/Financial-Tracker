@@ -1,4 +1,4 @@
-﻿const { app, BrowserWindow } = require("electron");
+﻿const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require("path");
 const fs = require("fs");
 
@@ -40,6 +40,107 @@ const writeLog = (level, message) => {
   else console.log(message);
 };
 
+async function fetchQuotesFromProvider(provider, tickers, keys) {
+  const unique = [...new Set((tickers || []).map((t) => String(t).trim().toUpperCase()).filter(Boolean))];
+  if (unique.length === 0) return {};
+
+  if (provider === "yahoo") {
+    const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(unique.join(","))}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Yahoo ${res.status}`);
+    const data = await res.json();
+    const quotes = {};
+    for (const row of data?.quoteResponse?.result ?? []) {
+      if (!row?.symbol || row.regularMarketPrice == null) continue;
+      const ticker = row.symbol.toUpperCase();
+      quotes[ticker] = {
+        ticker,
+        price: row.regularMarketPrice,
+        currency: row.currency || "USD",
+        asOf: row.regularMarketTime
+          ? new Date(row.regularMarketTime * 1000).toISOString()
+          : new Date().toISOString(),
+        source: "yahoo",
+      };
+    }
+    return quotes;
+  }
+
+  if (provider === "stooq") {
+    const symbols = unique.map((t) => `${t.toLowerCase()}.us`).join(",");
+    const url = `https://stooq.com/q/l/?s=${symbols}&f=sd2t2ohlcv&h&e=csv`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Stooq ${res.status}`);
+    const text = await res.text();
+    const quotes = {};
+    const lines = text.trim().split(/\r?\n/);
+    for (let i = 1; i < lines.length; i++) {
+      const parts = lines[i].split(",");
+      const symbol = parts[0]?.replace(".US", "").toUpperCase();
+      const close = parseFloat(parts[6]);
+      if (!symbol || !Number.isFinite(close)) continue;
+      quotes[symbol] = {
+        ticker: symbol,
+        price: close,
+        currency: "USD",
+        asOf: new Date().toISOString(),
+        source: "stooq",
+      };
+    }
+    return quotes;
+  }
+
+  if (provider === "alphavantage" && keys?.alphaVantageKey) {
+    const quotes = {};
+    for (const ticker of unique) {
+      const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(ticker)}&apikey=${encodeURIComponent(keys.alphaVantageKey)}`;
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const data = await res.json();
+      const price = parseFloat(data?.["Global Quote"]?.["05. price"] ?? "");
+      if (!Number.isFinite(price)) continue;
+      quotes[ticker] = {
+        ticker,
+        price,
+        currency: "USD",
+        asOf: new Date().toISOString(),
+        source: "alphavantage",
+      };
+    }
+    return quotes;
+  }
+
+  if (provider === "finnhub" && keys?.finnhubKey) {
+    const quotes = {};
+    for (const ticker of unique) {
+      const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(ticker)}&token=${encodeURIComponent(keys.finnhubKey)}`;
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (data?.c == null || !Number.isFinite(data.c)) continue;
+      quotes[ticker] = {
+        ticker,
+        price: data.c,
+        currency: "USD",
+        asOf: data.t ? new Date(data.t * 1000).toISOString() : new Date().toISOString(),
+        source: "finnhub",
+      };
+    }
+    return quotes;
+  }
+
+  throw new Error(`Unsupported provider or missing API key: ${provider}`);
+}
+
+ipcMain.handle("quotes:fetch", async (_event, provider, tickers, keys) => {
+  try {
+    return await fetchQuotesFromProvider(provider, tickers, keys);
+  } catch (err) {
+    writeLog("ERROR", `quotes:fetch failed: ${err?.stack || err}`);
+    throw err;
+  }
+});
+
 const createWindow = () => {
   writeLog("INFO", "Creating main window");
 
@@ -50,6 +151,7 @@ const createWindow = () => {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      preload: path.join(__dirname, "preload.cjs"),
     },
   });
 

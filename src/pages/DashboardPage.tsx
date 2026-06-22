@@ -11,7 +11,12 @@ import {
 import { sumDebtInterest } from '../engine/loans'
 import { calculateFireResults, calculateCoastFiResults } from '../engine/fire'
 import { buildNetWorthGrowthSeries } from '../engine/projections'
+import { getLatestSnapshotTotals } from '../engine/networth'
 import { formatCurrency, formatPercent } from '../engine/format'
+
+function daysSince(date: string): number {
+  return Math.round((Date.now() - new Date(date).getTime()) / (1000 * 60 * 60 * 24))
+}
 
 export function DashboardPage() {
   const scenario = useFinanceStore((s) => s.getActiveScenario())
@@ -23,6 +28,21 @@ export function DashboardPage() {
     () => computeDashboardMetrics(scenario, fire.fireNumber, coast.coastFiNumber),
     [scenario, fire.fireNumber, coast.coastFiNumber]
   )
+  const snapshotTotals = useMemo(() => getLatestSnapshotTotals(scenario), [scenario])
+  const snapshotDate = useMemo(() => {
+    const snaps = scenario.netWorthSnapshots ?? []
+    if (snaps.length === 0) return null
+    return [...snaps].sort((a, b) => a.date.localeCompare(b.date)).at(-1)?.date ?? null
+  }, [scenario.netWorthSnapshots])
+
+  const useSnapshotNetWorth =
+    snapshotTotals != null &&
+    snapshotDate != null &&
+    daysSince(snapshotDate) <= 45
+
+  const netWorth = useSnapshotNetWorth ? snapshotTotals.netWorth : metrics.netWorth
+  const netWorthSub = useSnapshotNetWorth ? `Source: snapshot ${snapshotDate}` : undefined
+
   const allocation = useMemo(
     () => getAllocationBreakdown(accounts, allocationCategories),
     [accounts, allocationCategories]
@@ -40,7 +60,7 @@ export function DashboardPage() {
       <PageHeader title={greeting} subtitle="Wealth accumulation, retirement readiness, and FI progress at a glance" />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Net Worth" value={formatCurrency(metrics.netWorth, profile.currency)} />
+        <MetricCard label="Net Worth" value={formatCurrency(netWorth, profile.currency)} sub={netWorthSub} />
         <MetricCard label="Invested Assets" value={formatCurrency(metrics.totalInvested, profile.currency)} />
         <MetricCard label="Cash Holdings" value={formatCurrency(metrics.cashHoldings, profile.currency)} />
         <MetricCard label="Total Debt" value={formatCurrency(metrics.debt, profile.currency)} trend="down" />

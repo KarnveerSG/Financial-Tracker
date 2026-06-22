@@ -37,11 +37,49 @@ export interface AllocationCategoryDef {
   color: string
 }
 
+export type LotMethod = 'fifo' | 'lifo' | 'avg' | 'specific_id' | 'hifo'
+
+export interface TaxLot {
+  id: string
+  shares: number
+  costPerShare: number
+  acquiredDate: string
+  notes?: string
+}
+
+/** Future realized-gain history — not implemented in v1 */
+export interface TaxLotSale {
+  lotId: string
+  shares: number
+  salePrice: number
+  saleDate: string
+}
+
 export interface StockHolding {
   id: string
   ticker: string
   shares: number
   pricePerShare: number
+  lots?: TaxLot[]
+  costBasisMethod?: LotMethod
+}
+
+export type QuoteProviderId = 'yahoo' | 'stooq' | 'alphavantage' | 'finnhub'
+
+export interface MarketDataSettings {
+  livePricesEnabled: boolean
+  quoteProvider: QuoteProviderId
+  alphaVantageKey: string
+  finnhubKey: string
+  lastPriceRefresh: string | null
+}
+
+export interface PriceQuote {
+  ticker: string
+  price: number
+  currency: string
+  asOf: string
+  source: QuoteProviderId
 }
 
 export interface Account {
@@ -83,6 +121,8 @@ export interface UserProfile {
   filingStatus: FilingStatus
   state: string
   lightMode: boolean
+  marketData: MarketDataSettings
+  defaultLotMethod: LotMethod
 }
 
 export interface ProjectionAssumptions {
@@ -160,6 +200,15 @@ export interface NetWorthSnapshot {
   balances: Record<string, number>
 }
 
+export type SnapshotWindow = 6 | 12 | 'ytd' | 'all'
+export type PortfolioBreakdownTab = 'taxBucket' | 'treatment' | 'accountType' | 'ticker' | 'costBasis'
+
+export interface ScenarioUiState {
+  netWorthExpandedGroups: Record<string, boolean>
+  netWorthSnapshotWindow: SnapshotWindow
+  portfolioBreakdownTab: PortfolioBreakdownTab
+}
+
 export interface Scenario {
   id: string
   name: string
@@ -175,12 +224,14 @@ export interface Scenario {
   budgetInputs: BudgetInputs
   netWorthLineItems: NetWorthLineItem[]
   netWorthSnapshots: NetWorthSnapshot[]
+  uiState?: ScenarioUiState
 }
 
 export interface AppState {
   scenarios: Scenario[]
   activeScenarioId: string
   hasOnboarded: boolean
+  priceCache: Record<string, PriceQuote>
 }
 
 export const ACCOUNT_TYPES: { value: AccountType; label: string; defaultTax: TaxTreatment; defaultCategory: AllocationCategoryId; isLiability?: boolean }[] = [

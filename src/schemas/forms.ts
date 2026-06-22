@@ -1,10 +1,20 @@
 import { z } from 'zod'
 
+export const taxLotSchema = z.object({
+  id: z.string(),
+  shares: z.coerce.number().min(0),
+  costPerShare: z.coerce.number().min(0),
+  acquiredDate: z.string(),
+  notes: z.string().optional(),
+})
+
 export const stockHoldingSchema = z.object({
   id: z.string(),
   ticker: z.string().min(1, 'Ticker is required'),
   shares: z.coerce.number().min(0),
   pricePerShare: z.coerce.number().min(0),
+  lots: z.array(taxLotSchema).optional(),
+  costBasisMethod: z.enum(['fifo', 'lifo', 'avg', 'specific_id', 'hifo']).optional(),
 })
 
 export const accountSchema = z.object({

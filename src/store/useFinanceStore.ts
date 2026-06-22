@@ -11,6 +11,7 @@ import type {
   ProjectionAssumptions,
   FireSettings,
   Scenario,
+  ScenarioUiState,
   StockHolding,
   StressScenarioInputs,
   TaxSimulatorInputs,
@@ -32,6 +33,25 @@ import {
   mapAccountsToSnapshotBalances,
   parseNwTrackerXlsx,
 } from '../engine/networth'
+import { fetchQuotes } from '../lib/quoteClient'
+
+function defaultMarketData(): UserProfile['marketData'] {
+  return {
+    livePricesEnabled: false,
+    quoteProvider: 'yahoo',
+    alphaVantageKey: '',
+    finnhubKey: '',
+    lastPriceRefresh: null,
+  }
+}
+
+function defaultUiState(): ScenarioUiState {
+  return {
+    netWorthExpandedGroups: {},
+    netWorthSnapshotWindow: 6,
+    portfolioBreakdownTab: 'taxBucket',
+  }
+}
 
 function defaultProfile(): UserProfile {
   return {
@@ -44,6 +64,8 @@ function defaultProfile(): UserProfile {
     filingStatus: 'single',
     state: 'CA',
     lightMode: false,
+    marketData: defaultMarketData(),
+    defaultLotMethod: 'fifo',
   }
 }
 
@@ -114,6 +136,13 @@ function migrateScenario(scenario?: Scenario): Scenario {
     budgetInputs: scenario.budgetInputs ?? defaultBudgetInputs(),
     netWorthLineItems: scenario.netWorthLineItems ?? [],
     netWorthSnapshots: scenario.netWorthSnapshots ?? [],
+    uiState: { ...defaultUiState(), ...scenario.uiState },
+    profile: {
+      ...defaultProfile(),
+      ...scenario.profile,
+      marketData: { ...defaultMarketData(), ...scenario.profile?.marketData },
+      defaultLotMethod: scenario.profile?.defaultLotMethod ?? 'fifo',
+    },
   }
 }
 
@@ -144,6 +173,7 @@ export function createScenario(name = 'Base Case'): Scenario {
     budgetInputs: defaultBudgetInputs(),
     netWorthLineItems: [],
     netWorthSnapshots: [],
+    uiState: defaultUiState(),
   }
 }
 
@@ -203,6 +233,10 @@ interface FinanceStore extends AppState {
   updateNetWorthLineItem: (id: string, partial: Partial<NetWorthLineItem>) => void
   removeNetWorthLineItem: (id: string) => void
   recordNetWorthFromAccounts: (date?: string) => void
+  updateUiState: (partial: Partial<ScenarioUiState>) => void
+  updateMarketData: (partial: Partial<UserProfile['marketData']>) => void
+  refreshPrices: () => Promise<void>
+  clearPriceCache: () => void
 }
 
 const initialScenario = createScenario()
@@ -211,6 +245,7 @@ const initialState: AppState = {
   scenarios: [initialScenario],
   activeScenarioId: initialScenario.id,
   hasOnboarded: false,
+  priceCache: {},
 }
 
 function migrateLegacyData(): AppState | null {
@@ -243,7 +278,7 @@ function migrateLegacyData(): AppState | null {
       ]
     }
 
-    return { scenarios: [scenario], activeScenarioId: scenario.id, hasOnboarded: true }
+    return { scenarios: [scenario], activeScenarioId: scenario.id, hasOnboarded: true, priceCache: {} }
   } catch {
     return null
   }
@@ -552,12 +587,58 @@ export const useFinanceStore = create<FinanceStore>()(
           })(),
         }))
       },
+
+      updateUiState: (partial) =>
+        get().updateActiveScenario((s) => ({
+          ...s,
+          uiState: { ...defaultUiState(), ...s.uiState, ...partial },
+        })),
+
+      updateMarketData: (partial) =>
+        get().updateActiveScenario((s) => ({
+          ...s,
+          profile: {
+            ...s.profile,
+            marketData: { ...defaultMarketData(), ...s.profile.marketData, ...partial },
+          },
+        })),
+
+      refreshPrices: async () => {
+        const scenario = get().getActiveScenario()
+        const { marketData } = scenario.profile
+        if (!marketData.livePricesEnabled) return
+
+        const tickers = [
+          ...new Set(
+            scenario.accounts.flatMap((a) =>
+              (a.holdings ?? []).map((h) => h.ticker.trim().toUpperCase()).filter(Boolean)
+            )
+          ),
+        ]
+        if (tickers.length === 0) return
+
+        try {
+          const quotes = await fetchQuotes(marketData.quoteProvider, tickers, {
+            alphaVantageKey: marketData.alphaVantageKey,
+            finnhubKey: marketData.finnhubKey,
+          })
+          set((state) => ({
+            priceCache: { ...state.priceCache, ...quotes },
+          }))
+          get().updateMarketData({ lastPriceRefresh: new Date().toISOString() })
+        } catch {
+          // degrade silently — manual prices remain
+        }
+      },
+
+      clearPriceCache: () => set({ priceCache: {} }),
     }),
     {
       name: 'midnight-ledger-v3',
       onRehydrateStorage: () => (state) => {
         if (state) {
           state.scenarios = state.scenarios.map(migrateScenario)
+          state.priceCache = state.priceCache ?? {}
         }
         if (state && state.scenarios.length === 0) {
           const migrated = migrateLegacyData()
@@ -568,6 +649,7 @@ export const useFinanceStore = create<FinanceStore>()(
         scenarios: state.scenarios,
         activeScenarioId: state.activeScenarioId,
         hasOnboarded: state.hasOnboarded,
+        priceCache: state.priceCache,
       }),
     }
   )

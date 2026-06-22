@@ -1,26 +1,40 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { PageHeader } from '../components/layout/AppLayout'
 import { SectionCard } from '../components/shared/MetricCard'
 import { useFinanceStore } from '../store/useFinanceStore'
-import { ACCOUNT_TYPES, HOLDINGS_ACCOUNT_TYPES, type Account, type StockHolding } from '../types'
+import { ACCOUNT_TYPES, HOLDINGS_ACCOUNT_TYPES, type Account, type Currency, type StockHolding, type TaxLot } from '../types'
 import { accountSchema, type AccountFormValues } from '../schemas/forms'
 import { formatCurrency, createId } from '../engine/format'
 import { getHoldingsValue, resolveAccountBalance } from '../engine/accounts'
 import { calculateLoanInterest } from '../engine/loans'
+import { computeHoldingGainLoss, getHoldingShares } from '../engine/costBasis'
+import { parseLotsCsv } from '../engine/lotsImport'
 
 const LIABILITY_TYPES = new Set(['loan', 'mortgage', 'credit'])
 
 function StockHoldingsEditor({
   holdings,
   onChange,
+  currency,
+  livePricesEnabled,
+  priceCache,
+  defaultLotMethod,
 }: {
   holdings: StockHolding[]
   onChange: (holdings: StockHolding[]) => void
+  currency: Currency
+  livePricesEnabled: boolean
+  priceCache: Record<string, { price: number; asOf: string; source: string }>
+  defaultLotMethod: StockHolding['costBasisMethod']
 }) {
+  const [lotsOpen, setLotsOpen] = useState<Record<string, boolean>>({})
+  const csvRef = useRef<HTMLInputElement>(null)
+  const [importTargetId, setImportTargetId] = useState<string | null>(null)
+
   const addRow = () => {
-    onChange([...holdings, { id: createId(), ticker: '', shares: 0, pricePerShare: 0 }])
+    onChange([...holdings, { id: createId(), ticker: '', shares: 0, pricePerShare: 0, costBasisMethod: defaultLotMethod }])
   }
 
   const updateRow = (id: string, partial: Partial<StockHolding>) => {
@@ -29,6 +43,58 @@ function StockHoldingsEditor({
 
   const removeRow = (id: string) => {
     onChange(holdings.filter((h) => h.id !== id))
+  }
+
+  const getLivePrice = (ticker: string) => priceCache[ticker.toUpperCase()]
+
+  const addLot = (holdingId: string) => {
+    const lot: TaxLot = {
+      id: createId(),
+      shares: 0,
+      costPerShare: 0,
+      acquiredDate: new Date().toISOString().slice(0, 10),
+    }
+    updateRow(holdingId, {
+      lots: [...(holdings.find((h) => h.id === holdingId)?.lots ?? []), lot],
+    })
+  }
+
+  const updateLot = (holdingId: string, lotId: string, partial: Partial<TaxLot>) => {
+    const holding = holdings.find((h) => h.id === holdingId)
+    if (!holding) return
+    const lots = (holding.lots ?? []).map((l) => (l.id === lotId ? { ...l, ...partial } : l))
+    const shares = lots.reduce((s, l) => s + l.shares, 0)
+    updateRow(holdingId, { lots, shares })
+  }
+
+  const removeLot = (holdingId: string, lotId: string) => {
+    const holding = holdings.find((h) => h.id === holdingId)
+    if (!holding?.lots) return
+    const lots = holding.lots.filter((l) => l.id !== lotId)
+    if (lots.length === 0) {
+      updateRow(holdingId, { lots: undefined, shares: holding.shares })
+      return
+    }
+    updateRow(holdingId, { lots, shares: lots.reduce((s, l) => s + l.shares, 0) })
+  }
+
+  const convertToSingleLot = (holdingId: string) => {
+    const holding = holdings.find((h) => h.id === holdingId)
+    if (!holding?.lots?.length) return
+    const totalShares = holding.lots.reduce((s, l) => s + l.shares, 0)
+    const totalCost = holding.lots.reduce((s, l) => s + l.shares * l.costPerShare, 0)
+    updateRow(holdingId, {
+      lots: undefined,
+      shares: totalShares,
+      pricePerShare: totalShares > 0 ? totalCost / totalShares : holding.pricePerShare,
+    })
+  }
+
+  const handleLotsCsv = (holdingId: string, text: string) => {
+    const result = parseLotsCsv(text)
+    if (result.lots.length === 0) return
+    const shares = result.lots.reduce((s, l) => s + l.shares, 0)
+    updateRow(holdingId, { lots: result.lots, shares, costBasisMethod: defaultLotMethod })
   }
 
   return (
@@ -40,53 +106,149 @@ function StockHoldingsEditor({
       {holdings.length === 0 ? (
         <p className="text-sm text-ledger-muted">No holdings yet. Add tickers you own in this account.</p>
       ) : (
-        <div className="space-y-2">
-          {holdings.map((h) => (
-            <div key={h.id} className="grid gap-2 sm:grid-cols-4 items-end">
-              <div>
-                <label className="label text-xs">Ticker</label>
-                <input
-                  value={h.ticker}
-                  onChange={(e) => updateRow(h.id, { ticker: e.target.value.toUpperCase() })}
-                  className="input-field"
-                  placeholder="AAPL"
-                />
+        <div className="space-y-4">
+          {holdings.map((h) => {
+            const live = livePricesEnabled ? getLivePrice(h.ticker) : undefined
+            const effectivePrice = live?.price ?? h.pricePerShare
+            const shares = getHoldingShares(h)
+            const gainLoss = h.ticker ? computeHoldingGainLoss(h, effectivePrice) : null
+            const hasLots = (h.lots?.length ?? 0) > 0
+
+            return (
+              <div key={h.id} className="rounded-lg border border-ledger-border/50 p-3 space-y-2">
+                <div className="grid gap-2 sm:grid-cols-4 items-end">
+                  <div>
+                    <label className="label text-xs">Ticker</label>
+                    <input
+                      value={h.ticker}
+                      onChange={(e) => updateRow(h.id, { ticker: e.target.value.toUpperCase() })}
+                      className="input-field"
+                      placeholder="AAPL"
+                    />
+                  </div>
+                  <div>
+                    <label className="label text-xs">Shares</label>
+                    <input
+                      type="number"
+                      step="0.001"
+                      value={shares || ''}
+                      readOnly={hasLots}
+                      onChange={(e) => updateRow(h.id, { shares: +e.target.value })}
+                      className="input-field tabular-nums"
+                    />
+                  </div>
+                  <div>
+                    <label className="label text-xs">Price/Share</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={live ? live.price : h.pricePerShare || ''}
+                      disabled={!!live && livePricesEnabled}
+                      onChange={(e) => updateRow(h.id, { pricePerShare: +e.target.value })}
+                      className={`input-field tabular-nums ${live && livePricesEnabled ? 'opacity-60' : ''}`}
+                    />
+                    {live && livePricesEnabled && (
+                      <p className="mt-0.5 text-xs text-ledger-muted">
+                        Live ${live.price.toFixed(2)} · {live.source}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-1 pb-1">
+                    <span className="text-sm tabular-nums text-ledger-muted">
+                      {formatCurrency(shares * effectivePrice, currency)}
+                    </span>
+                    {gainLoss && gainLoss.totalCost > 0 && (
+                      <span className={`text-xs tabular-nums ${gainLoss.unrealizedGain >= 0 ? 'text-ledger-success' : 'text-ledger-danger'}`}>
+                        {gainLoss.unrealizedGain >= 0 ? '+' : ''}{formatCurrency(gainLoss.unrealizedGain, currency)} ({(gainLoss.unrealizedGainPct * 100).toFixed(1)}%)
+                      </span>
+                    )}
+                    <button type="button" onClick={() => removeRow(h.id)} className="btn-ghost text-sm text-ledger-danger text-left">Remove</button>
+                  </div>
+                </div>
+
+                <details open={lotsOpen[h.id]} onToggle={(e) => setLotsOpen((p) => ({ ...p, [h.id]: e.currentTarget.open }))}>
+                  <summary className="cursor-pointer text-sm text-ledger-muted">Lots & cost basis</summary>
+                  <div className="mt-2 space-y-2">
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" className="btn-ghost text-xs" onClick={() => addLot(h.id)}>+ Add lot</button>
+                      {hasLots && (
+                        <button type="button" className="btn-ghost text-xs" onClick={() => convertToSingleLot(h.id)}>
+                          Convert to single lot
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="btn-ghost text-xs"
+                        onClick={() => { setImportTargetId(h.id); csvRef.current?.click() }}
+                      >
+                        Import lots CSV
+                      </button>
+                    </div>
+                    {(h.lots ?? []).map((lot) => (
+                      <div key={lot.id} className="grid gap-2 sm:grid-cols-4 items-end">
+                        <div>
+                          <label className="label text-xs">Shares</label>
+                          <input type="number" step="0.001" value={lot.shares || ''} onChange={(e) => updateLot(h.id, lot.id, { shares: +e.target.value })} className="input-field tabular-nums" />
+                        </div>
+                        <div>
+                          <label className="label text-xs">Cost/share</label>
+                          <input type="number" step="0.01" value={lot.costPerShare || ''} onChange={(e) => updateLot(h.id, lot.id, { costPerShare: +e.target.value })} className="input-field tabular-nums" />
+                        </div>
+                        <div>
+                          <label className="label text-xs">Acquired</label>
+                          <input type="date" value={lot.acquiredDate} onChange={(e) => updateLot(h.id, lot.id, { acquiredDate: e.target.value })} className="input-field" />
+                        </div>
+                        <button type="button" onClick={() => removeLot(h.id, lot.id)} className="btn-ghost text-xs text-ledger-danger pb-2">Remove lot</button>
+                      </div>
+                    ))}
+                    <div>
+                      <label className="label text-xs">Cost basis method</label>
+                      <select
+                        value={h.costBasisMethod ?? defaultLotMethod ?? 'fifo'}
+                        onChange={(e) => updateRow(h.id, { costBasisMethod: e.target.value as StockHolding['costBasisMethod'] })}
+                        className="input-field w-auto"
+                      >
+                        <option value="fifo">FIFO</option>
+                        <option value="lifo">LIFO</option>
+                        <option value="avg">Average</option>
+                        <option value="hifo">HIFO</option>
+                        <option value="specific_id">Specific ID</option>
+                      </select>
+                    </div>
+                  </div>
+                </details>
               </div>
-              <div>
-                <label className="label text-xs">Shares</label>
-                <input
-                  type="number"
-                  step="0.001"
-                  value={h.shares || ''}
-                  onChange={(e) => updateRow(h.id, { shares: +e.target.value })}
-                  className="input-field tabular-nums"
-                />
-              </div>
-              <div>
-                <label className="label text-xs">Price/Share</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={h.pricePerShare || ''}
-                  onChange={(e) => updateRow(h.id, { pricePerShare: +e.target.value })}
-                  className="input-field tabular-nums"
-                />
-              </div>
-              <div className="flex items-center gap-2 pb-1">
-                <span className="text-sm tabular-nums text-ledger-muted">
-                  {formatCurrency(h.shares * h.pricePerShare)}
-                </span>
-                <button type="button" onClick={() => removeRow(h.id)} className="btn-ghost text-sm text-ledger-danger">Remove</button>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
       {holdings.length > 0 && (
         <p className="text-sm text-ledger-muted">
-          Total holdings value: {formatCurrency(getHoldingsValue(holdings))}
+          Total holdings value: {formatCurrency(getHoldingsValue(holdings.map((h) => {
+            const live = livePricesEnabled ? getLivePrice(h.ticker) : undefined
+            const price = live?.price ?? h.pricePerShare
+            const shares = getHoldingShares(h)
+            return { ...h, shares, pricePerShare: price }
+          })), currency)}
         </p>
       )}
+      <input
+        ref={csvRef}
+        type="file"
+        accept=".csv"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (!file || !importTargetId) return
+          const reader = new FileReader()
+          reader.onload = () => {
+            handleLotsCsv(importTargetId, reader.result as string)
+            setImportTargetId(null)
+          }
+          reader.readAsText(file)
+          e.target.value = ''
+        }}
+      />
     </div>
   )
 }
@@ -101,6 +263,7 @@ function AccountForm({
   onCancel: () => void
 }) {
   const scenario = useFinanceStore((s) => s.getActiveScenario())
+  const priceCache = useFinanceStore((s) => s.priceCache)
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<AccountFormValues>({
     resolver: zodResolver(accountSchema),
     defaultValues: account ?? {
@@ -246,6 +409,10 @@ function AccountForm({
           <StockHoldingsEditor
             holdings={holdings}
             onChange={(next) => setValue('holdings', next)}
+            currency={scenario.profile.currency}
+            livePricesEnabled={scenario.profile.marketData.livePricesEnabled}
+            priceCache={priceCache}
+            defaultLotMethod={scenario.profile.defaultLotMethod}
           />
           <label className="mt-3 flex items-center gap-2 text-sm">
             <input {...register('syncBalanceFromHoldings')} type="checkbox" className="rounded" />

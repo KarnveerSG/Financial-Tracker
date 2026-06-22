@@ -2,14 +2,18 @@ import * as XLSX from 'xlsx'
 import type {
   Account,
   AccountType,
+  AllocationCategoryDef,
   NetWorthLineItem,
   NetWorthLineKind,
   NetWorthSide,
   NetWorthSnapshot,
   ProjectionAssumptions,
   Scenario,
+  SnapshotWindow,
+  TaxTreatment,
   UserProfile,
 } from '../types'
+import { ACCOUNT_TYPES } from '../types'
 import { createId, todayISO } from './format'
 import { resolveAccountBalance, sumContributions } from './accounts'
 
@@ -21,6 +25,8 @@ const SKIP_LABELS = new Set([
   'total net worth',
   'total investments',
   'total cash/savings/equity',
+  'total tax-advantaged accounts',
+  'total taxable accounts',
   'total pre tax retirement %',
   'total roth retirement %',
   '401k pre tax %',
@@ -162,13 +168,13 @@ export function inferAccountType(name: string): AccountType | undefined {
   return undefined
 }
 
-function isInvestmentLineItem(item: NetWorthLineItem): boolean {
+export function isInvestmentLineItem(item: NetWorthLineItem): boolean {
   if (item.kind !== 'account' || item.side !== 'asset') return false
   if (item.accountType && INVESTMENT_TYPES.has(item.accountType)) {
     return item.accountType !== 'checking' && item.accountType !== 'savings'
   }
   const lower = item.name.toLowerCase()
-  if (lower.includes('checking') || lower.includes('savings') && !lower.includes('equity')) return false
+  if (lower.includes('checking') || (lower.includes('savings') && !lower.includes('equity'))) return false
   return (
     lower.includes('401') ||
     lower.includes('ira') ||
@@ -177,7 +183,8 @@ function isInvestmentLineItem(item: NetWorthLineItem): boolean {
     lower.includes('529') ||
     lower.includes('crypto') ||
     lower.includes('espp') ||
-    lower.includes('pension')
+    lower.includes('pension') ||
+    lower.includes('equity')
   )
 }
 
@@ -541,14 +548,217 @@ export function parseNwTrackerXlsx(buffer: ArrayBuffer): NetWorthImportResult {
   return { lineItems, snapshots }
 }
 
+export function filterSnapshotsForWindow(
+  snapshots: NetWorthSnapshot[],
+  window: SnapshotWindow
+): NetWorthSnapshot[] {
+  const sorted = sortSnapshots(snapshots)
+  if (window === 'all') return sorted
+  if (window === 'ytd') {
+    const year = sorted.at(-1)?.date.slice(0, 4) ?? new Date().getFullYear().toString()
+    return sorted.filter((s) => s.date >= `${year}-01-01`)
+  }
+  const n = window === 6 ? 6 : 12
+  return sorted.slice(-n)
+}
+
+export interface PortfolioBreakdownSlice {
+  label: string
+  value: number
+  percent: number
+  color: string
+}
+
+export interface TickerAccountRow {
+  accountName: string
+  shares: number
+  marketValue: number
+  taxTreatment: TaxTreatment
+}
+
+export interface TickerBreakdownRow {
+  ticker: string
+  totalShares: number
+  avgPrice: number
+  marketValue: number
+  percent: number
+  accounts: TickerAccountRow[]
+}
+
+export interface PortfolioBreakdown {
+  byTaxBucket: PortfolioBreakdownSlice[]
+  byTreatment: PortfolioBreakdownSlice[]
+  byAccountType: PortfolioBreakdownSlice[]
+  byTicker: TickerBreakdownRow[]
+  uncategorizedCash: number
+  total: number
+}
+
+const TAX_BUCKET_COLORS: Record<string, string> = {
+  pretax: '#6b8fbf',
+  roth: '#7d9b8a',
+  taxable: '#c9a962',
+  cash: '#9aa5b8',
+  other: '#8b7aa8',
+}
+
+function getHoldingPrice(ticker: string, holding: { pricePerShare: number }, livePrices?: Record<string, number>): number {
+  const live = livePrices?.[ticker.toUpperCase()]
+  return live ?? holding.pricePerShare
+}
+
+export function getPortfolioBreakdown(
+  accounts: Account[],
+  allocationCategories: AllocationCategoryDef[],
+  livePrices?: Record<string, number>
+): PortfolioBreakdown {
+  const assetAccounts = accounts.filter((a) => !a.isLiability)
+  const liabilities = accounts.filter((a) => a.isLiability)
+  const liabilityTotal = liabilities.reduce((s, a) => s + resolveAccountBalance(a), 0)
+
+  const taxBucketMap = new Map<string, number>()
+  const treatmentMap = new Map<string, number>()
+  const accountTypeMap = new Map<string, number>()
+  const tickerMap = new Map<string, TickerBreakdownRow>()
+  let uncategorizedCash = 0
+  let holdingsTotal = 0
+
+  for (const account of assetAccounts) {
+    const balance = resolveAccountBalance(account)
+    const cat = account.allocationCategory
+    let bucketKey = 'other'
+    if (cat === 'pretax') bucketKey = 'pretax'
+    else if (cat === 'posttax') bucketKey = 'roth'
+    else if (cat === 'taxable_brokerage') bucketKey = 'taxable'
+    else if (cat === 'cash_hysa') bucketKey = 'cash'
+    taxBucketMap.set(bucketKey, (taxBucketMap.get(bucketKey) ?? 0) + balance)
+
+    if (account.taxTreatment === 'pretax') {
+      treatmentMap.set('Pretax', (treatmentMap.get('Pretax') ?? 0) + balance)
+    } else if (account.taxTreatment === 'roth') {
+      treatmentMap.set('Post-tax', (treatmentMap.get('Post-tax') ?? 0) + balance)
+    } else if (account.taxTreatment === 'taxable') {
+      treatmentMap.set('Taxable', (treatmentMap.get('Taxable') ?? 0) + balance)
+    }
+
+    const typeLabel = ACCOUNT_TYPES.find((t) => t.value === account.accountType)?.label ?? account.accountType
+    accountTypeMap.set(typeLabel, (accountTypeMap.get(typeLabel) ?? 0) + balance)
+
+    if (account.holdings?.length) {
+      let accountHoldingsValue = 0
+      for (const holding of account.holdings) {
+        const ticker = holding.ticker.toUpperCase()
+        const price = getHoldingPrice(ticker, holding, livePrices)
+        const shares = holding.lots?.length
+          ? holding.lots.reduce((sum, lot) => sum + lot.shares, 0)
+          : holding.shares
+        const marketValue = shares * price
+        accountHoldingsValue += marketValue
+        holdingsTotal += marketValue
+
+        const existing = tickerMap.get(ticker)
+        if (existing) {
+          existing.totalShares += shares
+          existing.marketValue += marketValue
+          existing.accounts.push({
+            accountName: account.name,
+            shares,
+            marketValue,
+            taxTreatment: account.taxTreatment,
+          })
+          existing.avgPrice = existing.totalShares > 0 ? existing.marketValue / existing.totalShares : 0
+        } else {
+          tickerMap.set(ticker, {
+            ticker,
+            totalShares: shares,
+            avgPrice: price,
+            marketValue,
+            percent: 0,
+            accounts: [{
+              accountName: account.name,
+              shares,
+              marketValue,
+              taxTreatment: account.taxTreatment,
+            }],
+          })
+        }
+      }
+      const gap = balance - accountHoldingsValue
+      if (gap > 0) uncategorizedCash += gap
+    }
+  }
+
+  const totalAssets = assetAccounts.reduce((s, a) => s + resolveAccountBalance(a), 0)
+  const total = totalAssets - liabilityTotal
+
+  const BUCKET_LABELS: Record<string, string> = {
+    pretax: 'Pretax',
+    roth: 'Roth (Post-tax)',
+    taxable: 'Taxable',
+    cash: 'Cash',
+    other: allocationCategories.find((c) => c.id === 'other')?.label ?? 'Other',
+  }
+
+  const toSlices = (map: Map<string, number>, colorFn?: (key: string) => string): PortfolioBreakdownSlice[] =>
+    Array.from(map.entries())
+      .filter(([, value]) => value > 0)
+      .map(([label, value]) => ({
+        label,
+        value,
+        percent: total > 0 ? value / total : 0,
+        color: colorFn?.(label) ?? '#9aa5b8',
+      }))
+      .sort((a, b) => b.value - a.value)
+
+  const byTaxBucket: PortfolioBreakdownSlice[] = Array.from(taxBucketMap.entries())
+    .filter(([, value]) => value > 0)
+    .map(([key, value]) => ({
+      label: BUCKET_LABELS[key] ?? key,
+      value,
+      percent: total > 0 ? value / total : 0,
+      color: TAX_BUCKET_COLORS[key] ?? '#9aa5b8',
+    }))
+    .sort((a, b) => b.value - a.value)
+
+  const byTicker = Array.from(tickerMap.values())
+    .map((row) => ({
+      ...row,
+      percent: holdingsTotal > 0 ? row.marketValue / holdingsTotal : 0,
+    }))
+    .sort((a, b) => b.marketValue - a.marketValue)
+
+  if (uncategorizedCash > 0) {
+    byTicker.push({
+      ticker: 'Uncategorized cash/funds',
+      totalShares: 0,
+      avgPrice: 0,
+      marketValue: uncategorizedCash,
+      percent: holdingsTotal + uncategorizedCash > 0 ? uncategorizedCash / (holdingsTotal + uncategorizedCash) : 0,
+      accounts: [],
+    })
+  }
+
+  return {
+    byTaxBucket,
+    byTreatment: toSlices(treatmentMap, (key) =>
+      key === 'Pretax' ? '#6b8fbf' : key === 'Post-tax' ? '#7d9b8a' : '#c9a962'
+    ),
+    byAccountType: toSlices(accountTypeMap),
+    byTicker,
+    uncategorizedCash,
+    total,
+  }
+}
+
 export function netWorthSnapshotsToCsv(
   lineItems: NetWorthLineItem[],
   snapshots: NetWorthSnapshot[]
 ): string {
   const sorted = sortSnapshots(snapshots)
+  const exportedAt = new Date().toISOString().replace('T', ' ').slice(0, 16)
   const accounts = lineItems.filter((item) => item.kind === 'account')
   const header = ['Account', 'Side', ...sorted.map((s) => s.date)]
-  const lines = [header.join(',')]
+  const lines = [`# Exported ${exportedAt}`, header.join(',')]
 
   for (const item of accounts) {
     const row = [

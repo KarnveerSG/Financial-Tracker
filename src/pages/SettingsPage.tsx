@@ -33,7 +33,7 @@ export function SettingsPage() {
   const csvRef = useRef<HTMLInputElement>(null)
 
   const handleExportJson = () => {
-    const json = exportAppState({ scenarios, activeScenarioId, hasOnboarded: true })
+    const json = exportAppState({ scenarios, activeScenarioId, hasOnboarded: true, priceCache: state.priceCache })
     const blob = new Blob([json], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -205,6 +205,81 @@ export function SettingsPage() {
             <input ref={csvRef} type="file" accept=".csv" onChange={handleImportCsv} className="hidden" />
           </div>
           {importError && <p className="mt-2 text-sm text-ledger-danger">{importError}</p>}
+        </SectionCard>
+
+        <SectionCard title="Market data">
+          <div className="space-y-4">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={scenario.profile.marketData.livePricesEnabled}
+                onChange={(e) => state.updateMarketData({ livePricesEnabled: e.target.checked })}
+                className="rounded"
+              />
+              Fetch live stock prices
+            </label>
+            <InputRow label="Quote provider">
+              <select
+                value={scenario.profile.marketData.quoteProvider}
+                onChange={(e) => state.updateMarketData({ quoteProvider: e.target.value as typeof scenario.profile.marketData.quoteProvider })}
+                className="input-field"
+              >
+                <option value="yahoo">Yahoo Finance (Electron / dev proxy)</option>
+                <option value="stooq">Stooq (Electron / dev proxy)</option>
+                <option value="alphavantage">Alpha Vantage (API key)</option>
+                <option value="finnhub">Finnhub (API key)</option>
+              </select>
+            </InputRow>
+            {scenario.profile.marketData.quoteProvider === 'alphavantage' && (
+              <InputRow label="Alpha Vantage API key">
+                <input
+                  type="password"
+                  value={scenario.profile.marketData.alphaVantageKey}
+                  onChange={(e) => state.updateMarketData({ alphaVantageKey: e.target.value })}
+                  className="input-field"
+                />
+              </InputRow>
+            )}
+            {scenario.profile.marketData.quoteProvider === 'finnhub' && (
+              <InputRow label="Finnhub API key">
+                <input
+                  type="password"
+                  value={scenario.profile.marketData.finnhubKey}
+                  onChange={(e) => state.updateMarketData({ finnhubKey: e.target.value })}
+                  className="input-field"
+                />
+              </InputRow>
+            )}
+            <InputRow label="Default cost basis method">
+              <select
+                value={scenario.profile.defaultLotMethod}
+                onChange={(e) => updateProfile({ defaultLotMethod: e.target.value as typeof scenario.profile.defaultLotMethod })}
+                className="input-field"
+              >
+                <option value="fifo">FIFO</option>
+                <option value="lifo">LIFO</option>
+                <option value="avg">Average</option>
+                <option value="hifo">HIFO</option>
+                <option value="specific_id">Specific ID</option>
+              </select>
+            </InputRow>
+            {scenario.profile.marketData.lastPriceRefresh && (
+              <p className="text-sm text-ledger-muted">
+                Last refresh: {new Date(scenario.profile.marketData.lastPriceRefresh).toLocaleString()}
+              </p>
+            )}
+            <div className="flex flex-wrap gap-3">
+              <button type="button" onClick={() => void state.refreshPrices()} className="btn-secondary text-sm">
+                Refresh prices now
+              </button>
+              <button type="button" onClick={() => state.clearPriceCache()} className="btn-secondary text-sm">
+                Clear price cache
+              </button>
+            </div>
+            <p className="text-xs text-ledger-muted">
+              Yahoo/Stooq need Electron or the Vite dev proxy. Web builds use Alpha Vantage or Finnhub keys.
+            </p>
+          </div>
         </SectionCard>
 
         <SectionCard title="Testing">

@@ -2,20 +2,22 @@ import { useMemo, useRef, useState } from 'react'
 import { PageHeader } from '../components/layout/AppLayout'
 import { MetricCard, SectionCard } from '../components/shared/MetricCard'
 import { LineTrendChart } from '../components/charts/FinanceCharts'
+import { PortfolioBreakdown } from '../components/networth/PortfolioBreakdown'
 import { useFinanceStore } from '../store/useFinanceStore'
 import {
   buildNetWorthHistorySeries,
   buildNetWorthProjectionOverlay,
   computePeriodMetrics,
   computeSnapshotTotals,
+  filterSnapshotsForWindow,
   getDataThroughDate,
   getDateRangePresets,
   getEffectiveSnapshots,
   getLatestSnapshotTotals,
   netWorthSnapshotsToCsv,
 } from '../engine/networth'
-import { formatCurrency, formatPercent } from '../engine/format'
-import type { NetWorthLineItem } from '../types'
+import { formatCurrency, formatPercent, todayISO } from '../engine/format'
+import type { NetWorthLineItem, SnapshotWindow } from '../types'
 
 type RangePreset = '1M' | '3M' | '1Y' | 'YTD' | 'all'
 
@@ -28,6 +30,13 @@ type NetWorthChartRow = {
   projected?: number
 }
 
+const WINDOW_OPTIONS: { value: SnapshotWindow; label: string }[] = [
+  { value: 6, label: '6 most recent' },
+  { value: 12, label: '12 months' },
+  { value: 'ytd', label: 'This year' },
+  { value: 'all', label: 'All' },
+]
+
 function indentLevel(item: NetWorthLineItem, items: NetWorthLineItem[]): number {
   let depth = 0
   let current: NetWorthLineItem | undefined = item
@@ -38,6 +47,12 @@ function indentLevel(item: NetWorthLineItem, items: NetWorthLineItem[]): number 
   return item.kind === 'section' ? 0 : item.kind === 'group' ? 1 : depth + 1
 }
 
+function parseBalanceInput(raw: string): number | null {
+  if (raw === '') return null
+  const num = Number(raw)
+  return Number.isFinite(num) ? num : null
+}
+
 export function NetWorthPage() {
   const scenario = useFinanceStore((s) => s.getActiveScenario())
   const {
@@ -46,28 +61,36 @@ export function NetWorthPage() {
     addNetWorthSnapshot,
     updateNetWorthBalance,
     removeNetWorthSnapshot,
+    updateUiState,
   } = useFinanceStore()
 
   const fileRef = useRef<HTMLInputElement>(null)
   const [rangePreset, setRangePreset] = useState<RangePreset>('all')
   const [showProjection, setShowProjection] = useState(true)
   const [importError, setImportError] = useState('')
-  const [manualDate, setManualDate] = useState(new Date().toISOString().slice(0, 10))
+  const [manualDate, setManualDate] = useState(todayISO())
 
   const { profile, netWorthLineItems, netWorthSnapshots, accounts } = scenario
+  const uiState = scenario.uiState ?? { netWorthExpandedGroups: {} as Record<string, boolean>, netWorthSnapshotWindow: 6 as const }
+  const expandedGroups: Record<string, boolean> = uiState.netWorthExpandedGroups ?? {}
+  const snapshotWindow = uiState.netWorthSnapshotWindow
+
   const effectiveSnapshots = useMemo(
     () => getEffectiveSnapshots(netWorthSnapshots, netWorthLineItems),
     [netWorthSnapshots, netWorthLineItems]
   )
+
+  const visibleSnapshots = useMemo(
+    () => filterSnapshotsForWindow(effectiveSnapshots, snapshotWindow),
+    [effectiveSnapshots, snapshotWindow]
+  )
+
   const dataThroughDate = useMemo(
     () => getDataThroughDate(netWorthSnapshots, netWorthLineItems),
     [netWorthSnapshots, netWorthLineItems]
   )
 
-  const latestTotals = useMemo(
-    () => getLatestSnapshotTotals(scenario),
-    [scenario]
-  )
+  const latestTotals = useMemo(() => getLatestSnapshotTotals(scenario), [scenario])
 
   const rangePresets = useMemo(
     () => getDateRangePresets(netWorthSnapshots, netWorthLineItems),
@@ -128,6 +151,44 @@ export function NetWorthPage() {
     [netWorthLineItems]
   )
 
+  const groupIds = useMemo(
+    () => displayItems.filter((i) => i.kind === 'group').map((i) => i.id),
+    [displayItems]
+  )
+
+  const visibleRows = useMemo(() => {
+    const hiddenChildIds = new Set<string>()
+    for (const group of displayItems) {
+      if (group.kind === 'group' && !expandedGroups[group.id]) {
+        for (const child of displayItems) {
+          if (child.kind === 'account' && child.parentId === group.id) {
+            hiddenChildIds.add(child.id)
+          }
+        }
+      }
+    }
+    return displayItems.filter((item) => !hiddenChildIds.has(item.id))
+  }, [displayItems, expandedGroups])
+
+  const toggleGroup = (groupId: string) => {
+    updateUiState({
+      netWorthExpandedGroups: {
+        ...expandedGroups,
+        [groupId]: !expandedGroups[groupId],
+      },
+    })
+  }
+
+  const expandAllGroups = () => {
+    const next: Record<string, boolean> = {}
+    for (const id of groupIds) next[id] = true
+    updateUiState({ netWorthExpandedGroups: next })
+  }
+
+  const collapseAllGroups = () => {
+    updateUiState({ netWorthExpandedGroups: {} })
+  }
+
   const handleImport = async (file: File) => {
     setImportError('')
     try {
@@ -176,6 +237,7 @@ export function NetWorthPage() {
           <input
             type="date"
             value={manualDate}
+            max={todayISO()}
             onChange={(e) => setManualDate(e.target.value)}
             className="input-field w-auto"
           />
@@ -289,6 +351,12 @@ export function NetWorthPage() {
             />
           </div>
 
+          <div className="mt-8">
+            <SectionCard title="Portfolio breakdown">
+              <PortfolioBreakdown />
+            </SectionCard>
+          </div>
+
           <div className="mt-8 grid gap-6 lg:grid-cols-2">
             <SectionCard title="Net worth history">
               <LineTrendChart
@@ -316,14 +384,43 @@ export function NetWorthPage() {
             </SectionCard>
           </div>
 
-          <SectionCard title="Snapshot grid">
-            <div className="overflow-x-auto">
+          <SectionCard
+            title="Snapshot grid"
+            action={
+              <div className="flex gap-2">
+                <button type="button" className="btn-ghost text-xs" onClick={expandAllGroups}>
+                  Expand all
+                </button>
+                <button type="button" className="btn-ghost text-xs" onClick={collapseAllGroups}>
+                  Collapse all
+                </button>
+              </div>
+            }
+          >
+            <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-ledger-muted">Show:</span>
+              {WINDOW_OPTIONS.map((opt) => (
+                <button
+                  key={String(opt.value)}
+                  type="button"
+                  onClick={() => updateUiState({ netWorthSnapshotWindow: opt.value })}
+                  className={`rounded-xl px-3 py-1 text-sm ${
+                    snapshotWindow === opt.value
+                      ? 'bg-ledger-gold/15 font-medium text-ledger-gold'
+                      : 'text-ledger-muted hover:bg-ledger-elevated'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <div className="max-h-[70vh] overflow-auto">
               <table className="w-full min-w-[640px] text-left text-sm">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-ledger-surface">
                   <tr className="border-b border-ledger-border text-ledger-muted">
-                    <th className="sticky left-0 bg-ledger-surface px-3 py-2">Account</th>
-                    {effectiveSnapshots.map((snapshot) => (
-                      <th key={snapshot.id} className="px-3 py-2 whitespace-nowrap">
+                    <th className="sticky left-0 z-20 bg-ledger-surface px-3 py-2">Account</th>
+                    {visibleSnapshots.map((snapshot) => (
+                      <th key={snapshot.id} className="px-3 py-2 whitespace-nowrap bg-ledger-surface">
                         <div className="flex items-center gap-1">
                           <span>{snapshot.date}</span>
                           {effectiveSnapshots.length > 1 && (
@@ -339,32 +436,34 @@ export function NetWorthPage() {
                         </div>
                       </th>
                     ))}
-                    <th className="px-3 py-2">Total</th>
+                    <th className="px-3 py-2 bg-ledger-surface">Total</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {displayItems.map((item) => {
+                  {visibleRows.map((item) => {
                     if (item.kind === 'group') {
+                      const isExpanded = !!expandedGroups[item.id]
                       return (
                         <tr key={item.id} className="border-b border-ledger-border/50 bg-ledger-elevated/40">
                           <td
-                            className="sticky left-0 bg-ledger-elevated/40 px-3 py-2 font-medium"
+                            className="sticky left-0 z-10 bg-ledger-elevated/40 px-3 py-2 font-medium cursor-pointer select-none"
                             style={{ paddingLeft: `${indentLevel(item, netWorthLineItems) * 12 + 12}px` }}
+                            onClick={() => toggleGroup(item.id)}
                           >
+                            <span className="mr-1 text-ledger-muted">{isExpanded ? '▾' : '▸'}</span>
                             {item.name}
                           </td>
-                          {effectiveSnapshots.map((snapshot) => (
+                          {visibleSnapshots.map((snapshot) => (
                             <td key={snapshot.id} className="px-3 py-1.5">
                               <input
                                 type="number"
                                 className="input-field w-28 py-1 text-right text-sm font-medium"
                                 value={snapshot.balances[item.id] ?? ''}
                                 onChange={(e) => {
-                                  const raw = e.target.value
                                   updateNetWorthBalance(
                                     snapshot.id,
                                     item.id,
-                                    raw === '' ? null : Number(raw)
+                                    parseBalanceInput(e.target.value)
                                   )
                                 }}
                               />
@@ -378,23 +477,22 @@ export function NetWorthPage() {
                     return (
                       <tr key={item.id} className="border-b border-ledger-border/30">
                         <td
-                          className="sticky left-0 bg-ledger-surface px-3 py-1.5"
+                          className="sticky left-0 z-10 bg-ledger-surface px-3 py-1.5"
                           style={{ paddingLeft: `${indentLevel(item, netWorthLineItems) * 12 + 12}px` }}
                         >
                           {item.name}
                         </td>
-                        {effectiveSnapshots.map((snapshot) => (
+                        {visibleSnapshots.map((snapshot) => (
                           <td key={snapshot.id} className="px-3 py-1.5">
                             <input
                               type="number"
                               className="input-field w-28 py-1 text-right text-sm"
                               value={snapshot.balances[item.id] ?? ''}
                               onChange={(e) => {
-                                const raw = e.target.value
                                 updateNetWorthBalance(
                                   snapshot.id,
                                   item.id,
-                                  raw === '' ? null : Number(raw)
+                                  parseBalanceInput(e.target.value)
                                 )
                               }}
                             />
@@ -405,8 +503,8 @@ export function NetWorthPage() {
                     )
                   })}
                   <tr className="border-t border-ledger-border font-medium">
-                    <td className="sticky left-0 bg-ledger-surface px-3 py-2">Net Worth</td>
-                    {effectiveSnapshots.map((snapshot) => {
+                    <td className="sticky left-0 z-10 bg-ledger-surface px-3 py-2">Net Worth</td>
+                    {visibleSnapshots.map((snapshot) => {
                       const totals = computeSnapshotTotals(snapshot, netWorthLineItems)
                       return (
                         <td key={snapshot.id} className="px-3 py-2">
