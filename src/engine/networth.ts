@@ -389,6 +389,7 @@ export function getDateRangePresets(
 
   const offset = (months: number) => {
     const d = new Date(endDate)
+    d.setDate(1)
     d.setMonth(d.getMonth() - months)
     return d.toISOString().slice(0, 10)
   }
@@ -829,18 +830,51 @@ export function buildLineItemsFromAccounts(accounts: Account[]): NetWorthLineIte
   return lineItems
 }
 
+function scoreAccountNameMatch(itemName: string, accountName: string): number {
+  const item = itemName.toLowerCase()
+  const acct = accountName.toLowerCase()
+  if (item === acct) return 1000 + acct.length
+  if (item.includes(acct)) return 100 + acct.length
+  if (acct.includes(item)) return 50 + item.length
+  return 0
+}
+
+function findBestAccountMatch(itemName: string, accounts: Account[]): Account | undefined {
+  let best: Account | undefined
+  let bestScore = 0
+  for (const account of accounts) {
+    const score = scoreAccountNameMatch(itemName, account.name)
+    if (score > bestScore) {
+      bestScore = score
+      best = account
+    }
+  }
+  return bestScore > 0 ? best : undefined
+}
+
+export function recomputeGroupBalancesFromAccounts(
+  balances: Record<string, number>,
+  lineItems: NetWorthLineItem[]
+): Record<string, number> {
+  const result = { ...balances }
+  for (const group of lineItems.filter((item) => item.kind === 'group')) {
+    const children = lineItems.filter((item) => item.parentId === group.id && item.kind === 'account')
+    if (children.length === 0) continue
+    result[group.id] = children.reduce((sum, child) => sum + (result[child.id] ?? 0), 0)
+  }
+  return result
+}
+
 export function mapAccountsToSnapshotBalances(
   accounts: Account[],
   lineItems: NetWorthLineItem[]
-): Record<string, number> {
+): { balances: Record<string, number>; lineItems: NetWorthLineItem[] } {
   const balances: Record<string, number> = {}
-  const accountItems = lineItems.filter((item) => item.kind === 'account')
+  const nextLineItems = [...lineItems]
+  const accountItems = nextLineItems.filter((item) => item.kind === 'account')
 
   for (const item of accountItems) {
-    const match =
-      accounts.find((a) => a.name.toLowerCase() === item.name.toLowerCase()) ??
-      accounts.find((a) => item.name.toLowerCase().includes(a.name.toLowerCase())) ??
-      accounts.find((a) => a.name.toLowerCase().includes(item.name.toLowerCase()))
+    const match = findBestAccountMatch(item.name, accounts)
     if (match) balances[item.id] = resolveAccountBalance(match)
   }
 
@@ -851,18 +885,19 @@ export function mapAccountsToSnapshotBalances(
       id: createId(),
       name: account.name,
       parentId: account.isLiability
-        ? lineItems.find((i) => i.name === 'Debts')?.id ?? null
-        : lineItems.find((i) => i.name === 'Accounts')?.id ?? null,
+        ? nextLineItems.find((i) => i.name === 'Debts')?.id ?? null
+        : nextLineItems.find((i) => i.name === 'Accounts')?.id ?? null,
       kind: 'account',
       side: account.isLiability ? 'liability' : 'asset',
       accountType: account.accountType,
-      sortOrder: lineItems.length,
+      sortOrder: nextLineItems.length,
     }
-    lineItems.push(newItem)
+    nextLineItems.push(newItem)
     balances[newItem.id] = resolveAccountBalance(account)
   }
 
-  return balances
+  const withGroups = recomputeGroupBalancesFromAccounts(balances, nextLineItems)
+  return { balances: withGroups, lineItems: nextLineItems }
 }
 
 export function getLatestSnapshotTotals(scenario: Scenario): SnapshotTotals | null {

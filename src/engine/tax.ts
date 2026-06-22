@@ -123,14 +123,17 @@ export function calculateSocialSecurityTax(wages: number): number {
   return Math.min(wages, 168600) * 0.062
 }
 
+const ADDITIONAL_MEDICARE_THRESHOLD: Record<FilingStatus, number> = {
+  single: 200000,
+  married_joint: 250000,
+  married_separate: 125000,
+  head_of_household: 200000,
+}
+
 export function calculateMedicareTax(wages: number, status: FilingStatus): number {
   const base = wages * 0.0145
-  const additional =
-    status !== 'married_separate' && wages > 200000
-      ? (wages - 200000) * 0.009
-      : status === 'married_separate' && wages > 125000
-        ? (wages - 125000) * 0.009
-        : 0
+  const threshold = ADDITIONAL_MEDICARE_THRESHOLD[status]
+  const additional = wages > threshold ? (wages - threshold) * 0.009 : 0
   return base + additional
 }
 
@@ -188,45 +191,105 @@ export function getFederalBracketChartData(income: number, status: FilingStatus)
   return computeBracketTax(income, FEDERAL_BRACKETS_2024[status]).details
 }
 
+/** 2024 SSA bend points (monthly AIME). */
+const SSA_BEND_1 = 1174
+const SSA_BEND_2 = 7078
+const SSA_MAX_TAXABLE_EARNINGS = 168600
+
+function computePiaFromAime(aime: number): number {
+  return (
+    Math.min(aime, SSA_BEND_1) * 0.9 +
+    Math.max(0, Math.min(aime, SSA_BEND_2) - SSA_BEND_1) * 0.32 +
+    Math.max(0, aime - SSA_BEND_2) * 0.15
+  )
+}
+
+function earlyClaimReduction(monthsEarly: number): number {
+  if (monthsEarly <= 0) return 0
+  const first = Math.min(monthsEarly, 36)
+  const rest = Math.max(0, monthsEarly - 36)
+  return first * (5 / 9 / 100) + rest * (5 / 12 / 100)
+}
+
 export function estimateSocialSecurityBenefit(
   annualSalary: number,
-  retirementAge: number
+  retirementAge: number,
+  fullRetirementAge = 67
 ): number {
-  const aime = Math.min(annualSalary, 168600) / 12
-  const pia = aime * 0.4 * 12
-  const earlyReduction = retirementAge < 67 ? (67 - retirementAge) * 0.05 : 0
-  return Math.max(0, pia * (1 - earlyReduction))
+  const aime = Math.min(annualSalary, SSA_MAX_TAXABLE_EARNINGS) / 12
+  const monthlyPia = computePiaFromAime(aime)
+  const monthsEarly = Math.max(0, Math.round((fullRetirementAge - retirementAge) * 12))
+  const reduction = earlyClaimReduction(monthsEarly)
+  return Math.max(0, monthlyPia * 12 * (1 - reduction))
+}
+
+function futureValueOfAnnuity(annualPayment: number, years: number, rate: number): number {
+  if (years <= 0) return 0
+  if (rate === 0) return annualPayment * years
+  return annualPayment * ((Math.pow(1 + rate, years) - 1) / rate) * (1 + rate)
 }
 
 export function analyzeRothVsTraditional(
   annualContribution: number,
   years: number,
-  _currentTaxRate: number,
+  currentTaxRate: number,
   retirementTaxRate: number,
   returnRate: number
 ): { rothFuture: number; traditionalFuture: number; traditionalAfterTax: number; winner: 'roth' | 'traditional' | 'tie' } {
   const r = returnRate / 100
-  const rothFuture = annualContribution * ((Math.pow(1 + r, years) - 1) / r) * (1 + r)
-  const traditionalFuture = annualContribution * ((Math.pow(1 + r, years) - 1) / r) * (1 + r)
+  const preTaxContribution = annualContribution
+  const postTaxContribution = annualContribution * (1 - currentTaxRate / 100)
+
+  const traditionalFuture = futureValueOfAnnuity(preTaxContribution, years, r)
+  const rothFuture = futureValueOfAnnuity(postTaxContribution, years, r)
   const traditionalAfterTax = traditionalFuture * (1 - retirementTaxRate / 100)
-  const rothNet = rothFuture
-  const tradNet = traditionalAfterTax
 
   return {
-    rothFuture: rothNet,
+    rothFuture,
     traditionalFuture,
     traditionalAfterTax,
-    winner: Math.abs(rothNet - tradNet) < 100 ? 'tie' : rothNet > tradNet ? 'roth' : 'traditional',
+    winner:
+      Math.abs(rothFuture - traditionalAfterTax) < 100
+        ? 'tie'
+        : rothFuture > traditionalAfterTax
+          ? 'roth'
+          : 'traditional',
   }
 }
 
-export function estimateRMD(TraditionalBalance: number, age: number): number {
+/** IRS Uniform Lifetime Table (SECURE 2.0, ages 73–120). */
+const RMD_DISTRIBUTION_PERIOD: Record<number, number> = {
+  73: 26.5, 74: 25.5, 75: 24.6, 76: 23.7, 77: 22.9, 78: 22.0, 79: 21.1, 80: 20.2,
+  81: 19.4, 82: 18.5, 83: 17.7, 84: 16.8, 85: 16.0, 86: 15.2, 87: 14.4, 88: 13.7,
+  89: 12.9, 90: 12.2, 91: 11.5, 92: 10.8, 93: 10.1, 94: 9.5, 95: 8.9, 96: 8.4,
+  97: 7.8, 98: 7.3, 99: 6.8, 100: 6.4, 101: 6.0, 102: 5.6, 103: 5.2, 104: 4.9,
+  105: 4.6, 106: 4.3, 107: 4.1, 108: 3.9, 109: 3.7, 110: 3.5, 111: 3.4, 112: 3.3,
+  113: 3.1, 114: 3.0, 115: 2.9, 116: 2.8, 117: 2.7, 118: 2.5, 119: 2.3, 120: 2.0,
+}
+
+export function estimateRMD(traditionalBalance: number, age: number): number {
   if (age < 73) return 0
-  const factors: Record<number, number> = {
-    73: 26.5, 74: 25.5, 75: 24.6, 80: 20.2, 85: 16.0, 90: 12.2, 95: 8.9,
+  const clampedAge = Math.min(Math.max(age, 73), 120)
+  const factor = RMD_DISTRIBUTION_PERIOD[clampedAge] ?? RMD_DISTRIBUTION_PERIOD[120]
+  return traditionalBalance / factor
+}
+
+function computeConversionBreakevenYears(
+  conversionAmount: number,
+  taxNow: number,
+  growthRate: number,
+  futureTaxRate: number
+): number {
+  const futureRate = futureTaxRate / 100
+  if (futureRate <= 0 || conversionAmount <= 0) return 0
+
+  if (growthRate === 0) {
+    return taxNow <= conversionAmount * futureRate ? 0 : Infinity
   }
-  const factor = factors[age] ?? factors[95] ?? 10
-  return TraditionalBalance / factor
+
+  const target = taxNow / (conversionAmount * futureRate)
+  if (target <= 1) return 0
+  return Math.log(target) / Math.log(1 + growthRate)
 }
 
 export function rothConversionAnalysis(
@@ -239,6 +302,6 @@ export function rothConversionAnalysis(
   const taxNow = conversionAmount * (currentTaxRate / 100)
   const r = returnRate / 100
   const rothFutureValue = conversionAmount * Math.pow(1 + r, yearsToGrow)
-  const breakevenYears = currentTaxRate > futureTaxRate ? yearsToGrow * 0.6 : yearsToGrow * 1.2
+  const breakevenYears = computeConversionBreakevenYears(conversionAmount, taxNow, r, futureTaxRate)
   return { taxNow, rothFutureValue, breakevenYears }
 }

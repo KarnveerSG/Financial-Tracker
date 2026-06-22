@@ -44,6 +44,18 @@ describe('computeHoldingGainLoss', () => {
     expect(gl.shortTermShares).toBe(0)
     expect(gl.longTermShares).toBe(0)
   })
+
+  it('defaults implicit single lot to today for term classification', () => {
+    const holding = {
+      id: 'h1',
+      ticker: 'VTI',
+      shares: 10,
+      pricePerShare: 100,
+    }
+    const gl = computeHoldingGainLoss(holding, 110, '2025-06-01')
+    expect(gl.shortTermShares).toBe(10)
+    expect(gl.unknownTermShares).toBe(0)
+  })
 })
 
 describe('aggregateGainLoss', () => {

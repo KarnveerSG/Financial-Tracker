@@ -10,7 +10,7 @@ import { formatCurrency, createId } from '../engine/format'
 import { getHoldingsValue, resolveAccountBalance } from '../engine/accounts'
 import { calculateLoanInterest } from '../engine/loans'
 import { computeHoldingGainLoss, getHoldingShares } from '../engine/costBasis'
-import { parseLotsCsv } from '../engine/lotsImport'
+import { parseLotsCsv, type LotsImportResult } from '../engine/lotsImport'
 
 const LIABILITY_TYPES = new Set(['loan', 'mortgage', 'credit'])
 
@@ -32,6 +32,10 @@ function StockHoldingsEditor({
   const [lotsOpen, setLotsOpen] = useState<Record<string, boolean>>({})
   const csvRef = useRef<HTMLInputElement>(null)
   const [importTargetId, setImportTargetId] = useState<string | null>(null)
+  const [lotsImportPreview, setLotsImportPreview] = useState<{
+    holdingId: string
+    result: LotsImportResult
+  } | null>(null)
 
   const addRow = () => {
     onChange([...holdings, { id: createId(), ticker: '', shares: 0, pricePerShare: 0, costBasisMethod: defaultLotMethod }])
@@ -90,11 +94,17 @@ function StockHoldingsEditor({
     })
   }
 
-  const handleLotsCsv = (holdingId: string, text: string) => {
-    const result = parseLotsCsv(text)
+  const applyLotsImport = (holdingId: string, result: LotsImportResult) => {
     if (result.lots.length === 0) return
     const shares = result.lots.reduce((s, l) => s + l.shares, 0)
     updateRow(holdingId, { lots: result.lots, shares, costBasisMethod: defaultLotMethod })
+  }
+
+  const confirmLotsImport = () => {
+    if (!lotsImportPreview) return
+    applyLotsImport(lotsImportPreview.holdingId, lotsImportPreview.result)
+    setLotsImportPreview(null)
+    setImportTargetId(null)
   }
 
   return (
@@ -242,13 +252,62 @@ function StockHoldingsEditor({
           if (!file || !importTargetId) return
           const reader = new FileReader()
           reader.onload = () => {
-            handleLotsCsv(importTargetId, reader.result as string)
-            setImportTargetId(null)
+            const result = parseLotsCsv(reader.result as string)
+            if (result.lots.length === 0) {
+              setImportTargetId(null)
+              return
+            }
+            setLotsImportPreview({ holdingId: importTargetId, result })
           }
           reader.readAsText(file)
           e.target.value = ''
         }}
       />
+      {lotsImportPreview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[80vh] w-full max-w-lg overflow-auto rounded-2xl border border-ledger-border bg-ledger-bg p-6 shadow-xl">
+            <h3 className="text-lg font-medium">Confirm lots import</h3>
+            <p className="mt-1 text-sm text-ledger-muted">
+              Detected columns — ticker: {lotsImportPreview.result.columns.ticker}, shares:{' '}
+              {lotsImportPreview.result.columns.shares}, cost: {lotsImportPreview.result.columns.cost}, date:{' '}
+              {lotsImportPreview.result.columns.date}
+            </p>
+            <table className="mt-4 w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-ledger-border text-ledger-muted">
+                  <th className="py-1">Ticker</th>
+                  <th className="py-1 text-right">Shares</th>
+                  <th className="py-1 text-right">Cost</th>
+                  <th className="py-1">Acquired</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lotsImportPreview.result.preview.slice(0, 5).map((row, i) => (
+                  <tr key={i} className="border-b border-ledger-border/30">
+                    <td className="py-1">{row.ticker}</td>
+                    <td className="py-1 text-right tabular-nums">{row.shares}</td>
+                    <td className="py-1 text-right tabular-nums">{row.costPerShare}</td>
+                    <td className="py-1">{row.acquiredDate || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {lotsImportPreview.result.preview.length > 5 && (
+              <p className="mt-2 text-xs text-ledger-muted">
+                + {lotsImportPreview.result.preview.length - 5} more rows
+              </p>
+            )}
+            <div className="mt-6 flex justify-end gap-2">
+              <button type="button" className="btn-ghost" onClick={() => setLotsImportPreview(null)}>
+                Cancel
+              </button>
+              <button type="button" className="btn-primary" onClick={confirmLotsImport}>
+                Import {lotsImportPreview.result.lots.length} lots
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -42,6 +42,7 @@ export function AnalyticsPage() {
     [assumptions.annualReturnRate]
   )
 
+  // Pretax only; Roth IRAs and Roth 401(k)s excluded (SECURE 2.0 dropped Roth 401(k) RMDs from 2024).
   const tradBalance = accounts.filter((a) => a.taxTreatment === 'pretax').reduce((s, a) => s + a.balance, 0)
   const rmd = estimateRMD(tradBalance, Math.max(73, profile.retirementAge))
 

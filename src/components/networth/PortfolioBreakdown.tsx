@@ -4,7 +4,7 @@ import { useFinanceStore } from '../../store/useFinanceStore'
 import { getPortfolioBreakdown } from '../../engine/networth'
 import { aggregateGainLoss } from '../../engine/costBasis'
 import { formatCurrency, formatPercent } from '../../engine/format'
-import { isQuoteStale } from '../../engine/prices'
+import { isQuoteStale, getQuoteCacheTtlMs } from '../../engine/prices'
 import type { Currency, PortfolioBreakdownTab } from '../../types'
 
 const TABS: { id: PortfolioBreakdownTab; label: string }[] = [
@@ -58,10 +58,13 @@ export function PortfolioBreakdown() {
     const hasHoldings = accounts.some((a) => a.holdings?.length)
     if (!hasHoldings) return
 
+    const last = profile.marketData.lastPriceRefresh
+    if (last && Date.now() - new Date(last).getTime() < getQuoteCacheTtlMs()) return
+
     void refreshPrices().catch(() => {
       setPriceWarning('Could not refresh live prices — using manual values')
     })
-  }, [profile.marketData.livePricesEnabled, accounts, refreshPrices])
+  }, [profile.marketData.livePricesEnabled, profile.marketData.lastPriceRefresh, accounts, refreshPrices])
 
   const tabData = useMemo(() => {
     switch (activeTab) {
@@ -179,6 +182,7 @@ export function PortfolioBreakdown() {
                     <th className="px-2 py-2 text-right">%</th>
                     <th className="px-2 py-2 text-right">ST gain</th>
                     <th className="px-2 py-2 text-right">LT gain</th>
+                    <th className="px-2 py-2 text-right">Unknown</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -197,6 +201,9 @@ export function PortfolioBreakdown() {
                       </td>
                       <td className="px-2 py-1.5 text-right tabular-nums">{formatCurrency(row.shortTermGain, profile.currency)}</td>
                       <td className="px-2 py-1.5 text-right tabular-nums">{formatCurrency(row.longTermGain, profile.currency)}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">
+                        {row.unknownTermShares > 0 ? formatCurrency(row.unknownTermGain, profile.currency) : '—'}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

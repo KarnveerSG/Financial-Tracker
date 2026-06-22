@@ -1,19 +1,32 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, lazy, Suspense, type ReactNode } from 'react'
 import { BrowserRouter, HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AppLayout } from './components/layout/AppLayout'
 import { OnboardingPage } from './pages/OnboardingPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { NetWorthPage } from './pages/NetWorthPage'
 import { AccountsPage } from './pages/AccountsPage'
-import { ProjectionsPage } from './pages/ProjectionsPage'
 import { FirePage } from './pages/FirePage'
 import { TaxPage } from './pages/TaxPage'
 import { PaycheckPage } from './pages/PaycheckPage'
 import { BudgetPage } from './pages/BudgetPage'
-import { AnalyticsPage } from './pages/AnalyticsPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { useFinanceStore } from './store/useFinanceStore'
 import { isElectronFile } from './lib/isElectron'
+
+const ProjectionsPage = lazy(() =>
+  import('./pages/ProjectionsPage').then((m) => ({ default: m.ProjectionsPage }))
+)
+const AnalyticsPage = lazy(() =>
+  import('./pages/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage }))
+)
+
+function RouteFallback() {
+  return (
+    <div className="flex min-h-[40vh] items-center justify-center text-ledger-muted">
+      Loading…
+    </div>
+  )
+}
 
 const AppRouter = isElectronFile ? HashRouter : BrowserRouter
 
@@ -77,12 +90,12 @@ function AppRoutes() {
       <Route path="/dashboard" element={<Protected><DashboardPage /></Protected>} />
       <Route path="/net-worth" element={<Protected><NetWorthPage /></Protected>} />
       <Route path="/accounts" element={<Protected><AccountsPage /></Protected>} />
-      <Route path="/projections" element={<Protected><ProjectionsPage /></Protected>} />
+      <Route path="/projections" element={<Protected><Suspense fallback={<RouteFallback />}><ProjectionsPage /></Suspense></Protected>} />
       <Route path="/fire" element={<Protected><FirePage /></Protected>} />
       <Route path="/tax" element={<Protected><TaxPage /></Protected>} />
       <Route path="/paycheck" element={<Protected><PaycheckPage /></Protected>} />
       <Route path="/budget" element={<Protected><BudgetPage /></Protected>} />
-      <Route path="/analytics" element={<Protected><AnalyticsPage /></Protected>} />
+      <Route path="/analytics" element={<Protected><Suspense fallback={<RouteFallback />}><AnalyticsPage /></Suspense></Protected>} />
       <Route path="/settings" element={<Protected><SettingsPage /></Protected>} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

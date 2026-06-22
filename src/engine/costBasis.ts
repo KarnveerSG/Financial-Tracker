@@ -11,6 +11,7 @@ export interface HoldingGainLoss {
   shortTermShares: number
   longTermShares: number
   unknownTermShares: number
+  unknownTermGain: number
   shortTermGain: number
   longTermGain: number
   avgCostPerShare: number
@@ -32,7 +33,7 @@ function getEffectiveLots(holding: StockHolding): Array<{ shares: number; costPe
       acquiredDate: lot.acquiredDate || null,
     }))
   }
-  return [{ shares: holding.shares, costPerShare: holding.pricePerShare, acquiredDate: null }]
+  return [{ shares: holding.shares, costPerShare: holding.pricePerShare, acquiredDate: todayISO() }]
 }
 
 export function getHoldingShares(holding: StockHolding): number {
@@ -58,6 +59,7 @@ export function computeHoldingGainLoss(
   let shortTermShares = 0
   let longTermShares = 0
   let unknownTermShares = 0
+  let unknownTermGain = 0
   let shortTermGain = 0
   let longTermGain = 0
 
@@ -68,6 +70,7 @@ export function computeHoldingGainLoss(
 
     if (!lot.acquiredDate) {
       unknownTermShares += lot.shares
+      unknownTermGain += lotGain
       continue
     }
 
@@ -90,6 +93,7 @@ export function computeHoldingGainLoss(
     shortTermShares,
     longTermShares,
     unknownTermShares,
+    unknownTermGain,
     shortTermGain,
     longTermGain,
     avgCostPerShare: totalShares > 0 ? totalCost / totalShares : 0,
@@ -127,6 +131,7 @@ export function aggregateGainLoss(accounts: Account[], asOfDate = todayISO(), pr
           shortTermShares: existing.shortTermShares + gl.shortTermShares,
           longTermShares: existing.longTermShares + gl.longTermShares,
           unknownTermShares: existing.unknownTermShares + gl.unknownTermShares,
+          unknownTermGain: existing.unknownTermGain + gl.unknownTermGain,
           shortTermGain: existing.shortTermGain + gl.shortTermGain,
           longTermGain: existing.longTermGain + gl.longTermGain,
           avgCostPerShare: totalShares > 0 ? totalCost / totalShares : 0,

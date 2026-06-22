@@ -61,21 +61,23 @@ export function runStressTest(scenario: Scenario): StressTestResults {
   const stressedFire = calculateFireResults(stressedScenario)
   const stressedCoast = calculateCoastFiResults(stressedScenario)
 
+  const baseSuccess = estimateFireProbability(scenario, 200)
+  const stressSuccess = estimateFireProbability(stressedScenario, 200)
+
   return {
     baseline: {
       fireYears: baselineFire.yearsUntilFi,
       coastYears: baselineCoast.yearsUntilCoast,
-      successRate: estimateFireProbability(scenario, 200),
+      successRate: baseSuccess,
     },
     stressed: {
       fireYears: stressedFire.yearsUntilFi,
       coastYears: stressedCoast.yearsUntilCoast,
-      successRate: estimateFireProbability(stressedScenario, 200),
+      successRate: stressSuccess,
     },
     fireDateShift: (stressedFire.yearsUntilFi ?? 0) - (baselineFire.yearsUntilFi ?? 0),
     coastDateShift: (stressedCoast.yearsUntilCoast ?? 0) - (baselineCoast.yearsUntilCoast ?? 0),
-    successRateChange:
-      estimateFireProbability(stressedScenario, 200) - estimateFireProbability(scenario, 200),
+    successRateChange: stressSuccess - baseSuccess,
   }
 }
 

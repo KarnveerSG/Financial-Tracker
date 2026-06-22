@@ -212,6 +212,7 @@ export interface ScenarioUiState {
 export interface Scenario {
   id: string
   name: string
+  schemaVersion?: number
   accounts: Account[]
   profile: UserProfile
   assumptions: ProjectionAssumptions

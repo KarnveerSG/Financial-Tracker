@@ -119,11 +119,15 @@ export function calculatePaycheck(
   }
 }
 
-export function getAnnualCashFlowSummary(breakdown: PaycheckBreakdown) {
+export function getAnnualCashFlowSummary(breakdown: PaycheckBreakdown, frequency: PayFrequency) {
+  const periods = PERIODS[frequency]
+  const annualTaxes =
+    (breakdown.federalTax + breakdown.stateTax + breakdown.socialSecurity + breakdown.medicare) * periods
+  const annualRetirement = (breakdown.pretax401k + breakdown.roth401k) * periods
   return [
     { category: 'Gross Income', amount: breakdown.annualGross },
-    { category: 'Taxes & FICA', amount: breakdown.federalTax * PERIODS.monthly * 12 / 12 + breakdown.stateTax * 12 + breakdown.socialSecurity * 12 + breakdown.medicare * 12 },
-    { category: 'Retirement', amount: (breakdown.pretax401k + breakdown.roth401k) * PERIODS.monthly * 12 },
+    { category: 'Taxes & FICA', amount: annualTaxes },
+    { category: 'Retirement', amount: annualRetirement },
     { category: 'Net Take-Home', amount: breakdown.annualNet },
   ]
 }

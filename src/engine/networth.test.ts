@@ -11,6 +11,7 @@ import {
   getLatestEffectiveSnapshot,
   getPortfolioBreakdown,
   isInvestmentLineItem,
+  mapAccountsToSnapshotBalances,
   netWorthSnapshotsToCsv,
   snapshotHasData,
 } from './networth'
@@ -245,6 +246,36 @@ describe('getPortfolioBreakdown', () => {
 
     const pretaxTreatment = breakdown.byTreatment.find((t) => t.label === 'Pretax')
     expect(pretaxTreatment?.value).toBe(50000)
+  })
+})
+
+describe('mapAccountsToSnapshotBalances', () => {
+  it('prefers longest account name match for ambiguous items', () => {
+    const accounts = [
+      createDefaultAccount({ name: 'Roth', balance: 1000 }),
+      createDefaultAccount({ name: 'Roth 401k', balance: 50000 }),
+    ]
+    const lineItems: NetWorthLineItem[] = [
+      {
+        id: 'item-roth401',
+        name: 'Roth 401k',
+        parentId: null,
+        kind: 'account',
+        side: 'asset',
+        sortOrder: 0,
+      },
+      {
+        id: 'item-roth',
+        name: 'Roth',
+        parentId: null,
+        kind: 'account',
+        side: 'asset',
+        sortOrder: 1,
+      },
+    ]
+    const { balances } = mapAccountsToSnapshotBalances(accounts, lineItems)
+    expect(balances['item-roth401']).toBe(50000)
+    expect(balances['item-roth']).toBe(1000)
   })
 })
 

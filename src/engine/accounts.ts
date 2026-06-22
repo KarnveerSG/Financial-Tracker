@@ -1,5 +1,6 @@
 import type { Account, AllocationCategoryDef, Scenario, StockHolding } from '../types'
 import { ACCOUNT_TYPES } from '../types'
+import { parseCsvRows } from './csvParse'
 
 export interface DashboardMetrics {
   netWorth: number
@@ -160,13 +161,22 @@ export function accountsToCsv(accounts: Account[]): string {
 }
 
 export function parseAccountsCsv(csv: string): Account[] {
-  const lines = csv.trim().split(/\r?\n/)
-  if (lines.length < 2) return []
-  const headers = lines[0].split(',').map((h) => h.trim())
-  return lines.slice(1).map((line) => {
-    const values = line.split(',').map((v) => v.trim().replace(/^"|"$/g, ''))
+  const rows = parseCsvRows(csv)
+  if (rows.length < 2) return []
+  const headers = rows[0].map((h) => h.trim())
+  return rows.slice(1).map((values) => {
     const row: Record<string, string> = {}
-    headers.forEach((h, i) => { row[h] = values[i] ?? '' })
+    headers.forEach((h, i) => {
+      row[h] = values[i]?.trim() ?? ''
+    })
+    let holdings: Account['holdings'] = []
+    if (row.holdings) {
+      try {
+        holdings = JSON.parse(row.holdings)
+      } catch {
+        holdings = []
+      }
+    }
     return createDefaultAccount({
       name: row.name,
       accountType: row.accountType as Account['accountType'],
@@ -181,7 +191,7 @@ export function parseAccountsCsv(csv: string): Account[] {
       interestRate: parseFloat(row.interestRate) || 0,
       loanTermMonths: parseInt(row.loanTermMonths, 10) || 0,
       syncBalanceFromHoldings: row.syncBalanceFromHoldings === 'true',
-      holdings: row.holdings ? JSON.parse(row.holdings) : [],
+      holdings,
       notes: row.notes,
     })
   })

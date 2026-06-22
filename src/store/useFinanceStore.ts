@@ -35,6 +35,8 @@ import {
 } from '../engine/networth'
 import { fetchQuotes } from '../lib/quoteClient'
 
+const SCHEMA_VERSION = 3
+
 function defaultMarketData(): UserProfile['marketData'] {
   return {
     livePricesEnabled: false,
@@ -130,8 +132,15 @@ function migrateAccount(account: Account): Account {
 
 function migrateScenario(scenario?: Scenario): Scenario {
   if (!scenario) return createScenario()
+  if ((scenario.schemaVersion ?? 0) >= SCHEMA_VERSION) {
+    return {
+      ...scenario,
+      accounts: (scenario.accounts ?? []).map(migrateAccount),
+    }
+  }
   return {
     ...scenario,
+    schemaVersion: SCHEMA_VERSION,
     accounts: (scenario.accounts ?? []).map(migrateAccount),
     budgetInputs: scenario.budgetInputs ?? defaultBudgetInputs(),
     netWorthLineItems: scenario.netWorthLineItems ?? [],
@@ -161,6 +170,7 @@ export function createScenario(name = 'Base Case'): Scenario {
   return {
     id: createId(),
     name,
+    schemaVersion: SCHEMA_VERSION,
     accounts: [],
     profile: defaultProfile(),
     assumptions: defaultAssumptions(),
@@ -568,14 +578,17 @@ export const useFinanceStore = create<FinanceStore>()(
       recordNetWorthFromAccounts: (date) => {
         const scenario = get().getActiveScenario()
         const snapshotDate = date ?? new Date().toISOString().slice(0, 10)
-        let lineItems =
+        const lineItems =
           scenario.netWorthLineItems.length > 0
             ? [...scenario.netWorthLineItems]
             : buildLineItemsFromAccounts(scenario.accounts)
-        const balances = mapAccountsToSnapshotBalances(scenario.accounts, lineItems)
+        const { balances, lineItems: updatedLineItems } = mapAccountsToSnapshotBalances(
+          scenario.accounts,
+          lineItems
+        )
         get().updateActiveScenario((s) => ({
           ...s,
-          netWorthLineItems: lineItems,
+          netWorthLineItems: updatedLineItems,
           netWorthSnapshots: (() => {
             const existing = s.netWorthSnapshots.find((snap) => snap.date === snapshotDate)
             if (existing) {
@@ -623,7 +636,9 @@ export const useFinanceStore = create<FinanceStore>()(
             finnhubKey: marketData.finnhubKey,
           })
           set((state) => ({
-            priceCache: { ...state.priceCache, ...quotes },
+            priceCache: Object.fromEntries(
+              Object.entries({ ...state.priceCache, ...quotes }).filter(([key]) => tickers.includes(key))
+            ),
           }))
           get().updateMarketData({ lastPriceRefresh: new Date().toISOString() })
         } catch {

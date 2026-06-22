@@ -1,5 +1,6 @@
 import type { TaxLot } from '../types'
 import { createId } from './format'
+import { parseCsvLine } from './csvParse'
 
 const TICKER_KEYS = ['ticker', 'symbol', 'security', 'description']
 const SHARES_KEYS = ['shares', 'quantity', 'qty', 'units']
@@ -19,26 +20,6 @@ function findColumn(headers: string[], candidates: string[]): number {
   return -1
 }
 
-function parseCsvLine(line: string): string[] {
-  const result: string[] = []
-  let current = ''
-  let inQuotes = false
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i]
-    if (ch === '"') {
-      inQuotes = !inQuotes
-      continue
-    }
-    if (ch === ',' && !inQuotes) {
-      result.push(current.trim())
-      current = ''
-      continue
-    }
-    current += ch
-  }
-  result.push(current.trim())
-  return result
-}
 
 export interface LotsImportPreview {
   ticker: string

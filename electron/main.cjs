@@ -132,11 +132,15 @@ async function fetchQuotesFromProvider(provider, tickers, keys) {
   throw new Error(`Unsupported provider or missing API key: ${provider}`);
 }
 
+function sanitizeLogMessage(text) {
+  return String(text).replace(/([?&](apikey|token|api_key|key)=)[^&\s]+/gi, "$1[REDACTED]");
+}
+
 ipcMain.handle("quotes:fetch", async (_event, provider, tickers, keys) => {
   try {
     return await fetchQuotesFromProvider(provider, tickers, keys);
   } catch (err) {
-    writeLog("ERROR", `quotes:fetch failed: ${err?.stack || err}`);
+    writeLog("ERROR", `quotes:fetch failed: ${sanitizeLogMessage(err?.stack || err)}`);
     throw err;
   }
 });

@@ -29,11 +29,13 @@ export function PaycheckPage() {
 
   const effectiveTaxRate =
     paycheck.annualGross > 0
-      ? ((paycheck.federalTax * PERIODS[paycheckInputs.frequency] * (paycheckInputs.frequency === 'monthly' ? 1 : 1) +
-          paycheck.stateTax * PERIODS[paycheckInputs.frequency] +
-          paycheck.socialSecurity * PERIODS[paycheckInputs.frequency] +
-          paycheck.medicare * PERIODS[paycheckInputs.frequency]) /
-          paycheck.annualGross) * 100
+      ? ((paycheck.federalTax +
+          paycheck.stateTax +
+          paycheck.socialSecurity +
+          paycheck.medicare) *
+          PERIODS[paycheckInputs.frequency] /
+          paycheck.annualGross) *
+        100
       : 0
 
   return (
