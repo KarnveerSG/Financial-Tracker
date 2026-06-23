@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { PageHeader } from '../components/layout/AppLayout'
 import { MetricCard, SectionCard, InputRow } from '../components/shared/MetricCard'
 import { LineTrendChart } from '../components/charts/FinanceCharts'
@@ -63,6 +64,11 @@ export function AnalyticsPage() {
   return (
     <div>
       <PageHeader title="Advanced Analytics" subtitle="Stress testing, fee impact, Roth analysis, and sequence-of-returns risk" />
+      <p className="-mt-4 mb-6 text-sm">
+        <Link to="/analytics/compare" className="text-ledger-gold hover:underline">
+          Compare all scenarios side-by-side →
+        </Link>
+      </p>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard label="Savings Rate" value={formatPercent(metrics.savingsRate)} />

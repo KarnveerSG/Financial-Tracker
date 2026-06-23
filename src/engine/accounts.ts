@@ -1,9 +1,11 @@
 import type { Account, AllocationCategoryDef, Scenario, StockHolding } from '../types'
 import { ACCOUNT_TYPES } from '../types'
 import { parseCsvRows } from './csvParse'
+import { resolveDisplayNetWorth } from './netWorthDisplay'
 
 export interface DashboardMetrics {
   netWorth: number
+  netWorthSource?: string
   totalInvested: number
   cashHoldings: number
   retirementAccounts: number
@@ -77,9 +79,7 @@ export function computeDashboardMetrics(
   const assets = accounts.filter((a) => !a.isLiability)
   const liabilities = accounts.filter((a) => a.isLiability)
 
-  const netWorth =
-    assets.reduce((s, a) => s + resolveAccountBalance(a), 0) -
-    liabilities.reduce((s, a) => s + resolveAccountBalance(a), 0)
+  const { netWorth, source: netWorthSource } = resolveDisplayNetWorth(scenario)
 
   const totalInvested = assets
     .filter((a) => a.taxTreatment !== 'none' || RETIREMENT_TYPES.has(a.accountType) || BROKERAGE_TYPES.has(a.accountType))
@@ -107,6 +107,7 @@ export function computeDashboardMetrics(
 
   return {
     netWorth,
+    netWorthSource,
     totalInvested,
     cashHoldings,
     retirementAccounts,

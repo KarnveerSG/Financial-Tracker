@@ -1,10 +1,10 @@
 import fs from 'node:fs'
 import {
-  parseNwTrackerXlsx,
   computeSnapshotTotals,
   getEffectiveSnapshots,
   getLatestEffectiveSnapshot,
 } from '../src/engine/networth.ts'
+import { parseNwTrackerXlsx } from '../src/engine/networthXlsx.ts'
 
 const filePath = process.argv[2] ?? 'c:/Users/Karnveer/Downloads/NW Tracker.xlsx'
 
@@ -14,7 +14,7 @@ if (!fs.existsSync(filePath)) {
 }
 
 const buffer = fs.readFileSync(filePath)
-const { lineItems, snapshots } = parseNwTrackerXlsx(
+const { lineItems, snapshots } = await parseNwTrackerXlsx(
   buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
 )
 

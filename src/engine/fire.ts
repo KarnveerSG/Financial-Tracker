@@ -248,6 +248,49 @@ export function estimateFireProbability(
   return (successes / simulations) * 100
 }
 
+export function fireProbabilityByRetirementAge(
+  scenario: Scenario,
+  retirementAge: number,
+  simulations = 200
+): { probability: number; medianPortfolio: number; fireNumber: number; yearsToRetire: number } {
+  const fireNumber = calculateFireNumber(
+    scenario.fireSettings.annualSpending,
+    scenario.fireSettings.withdrawalRate
+  )
+  const yearsToRetire = Math.max(0, retirementAge - scenario.profile.currentAge)
+  const mean = scenario.assumptions.annualReturnRate / 100
+  const std = scenario.assumptions.returnStdDev / 100
+  const annualContrib = getAnnualContributions(scenario.accounts)
+
+  let successes = 0
+  const portfolios: number[] = []
+
+  for (let sim = 0; sim < simulations; sim++) {
+    let balance = getInvestableAssets(scenario.accounts)
+    let contrib = annualContrib
+    for (let y = 0; y < yearsToRetire; y++) {
+      const u1 = Math.random()
+      const u2 = Math.random()
+      const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2)
+      const ret = mean + z * std
+      balance = balance * (1 + ret) + contrib
+      contrib *= 1 + scenario.assumptions.contributionGrowthRate / 100
+    }
+    portfolios.push(balance)
+    if (balance >= fireNumber) successes++
+  }
+
+  portfolios.sort((a, b) => a - b)
+  const medianPortfolio = portfolios[Math.floor(portfolios.length / 2)] ?? 0
+
+  return {
+    probability: (successes / simulations) * 100,
+    medianPortfolio,
+    fireNumber,
+    yearsToRetire,
+  }
+}
+
 export function contributionImpact(
   scenario: Scenario,
   extraMonthly: number

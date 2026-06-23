@@ -131,6 +131,8 @@ export interface ProjectionAssumptions {
   returnStdDev: number
   salaryGrowthRate: number
   contributionGrowthRate: number
+  /** Estimated annual dividend/distribution yield on invested assets (Modified Dietz adjustment). */
+  portfolioDividendYield: number
 }
 
 export interface FireSettings {
@@ -160,6 +162,9 @@ export interface PaycheckInputs {
   healthInsurance: number
   otherDeductions: number
   frequency: PayFrequency
+  selfEmployedEnabled: boolean
+  selfEmployedNetIncome: number
+  solo401k: number
 }
 
 export interface StressScenarioInputs {
@@ -198,15 +203,21 @@ export interface NetWorthSnapshot {
   id: string
   date: string
   balances: Record<string, number>
+  /** Cash dividends/distributions withdrawn in this period (not reinvested). */
+  distributions?: number
 }
 
 export type SnapshotWindow = 6 | 12 | 'ytd' | 'all'
+export type NetWorthRangePreset = '1M' | '3M' | '1Y' | 'YTD' | 'all'
 export type PortfolioBreakdownTab = 'taxBucket' | 'treatment' | 'accountType' | 'ticker' | 'costBasis'
 
 export interface ScenarioUiState {
   netWorthExpandedGroups: Record<string, boolean>
   netWorthSnapshotWindow: SnapshotWindow
   portfolioBreakdownTab: PortfolioBreakdownTab
+  netWorthRangePreset: NetWorthRangePreset
+  netWorthShowProjection: boolean
+  netWorthManualDate: string
 }
 
 export interface Scenario {

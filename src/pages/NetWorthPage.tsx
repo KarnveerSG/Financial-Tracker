@@ -3,6 +3,7 @@ import { PageHeader } from '../components/layout/AppLayout'
 import { MetricCard, SectionCard } from '../components/shared/MetricCard'
 import { LineTrendChart } from '../components/charts/FinanceCharts'
 import { PortfolioBreakdown } from '../components/networth/PortfolioBreakdown'
+import { SnapshotBalanceInput } from '../components/networth/SnapshotBalanceInput'
 import { useFinanceStore } from '../store/useFinanceStore'
 import {
   buildNetWorthHistorySeries,
@@ -17,9 +18,7 @@ import {
   netWorthSnapshotsToCsv,
 } from '../engine/networth'
 import { formatCurrency, formatPercent, todayISO } from '../engine/format'
-import type { NetWorthLineItem, SnapshotWindow } from '../types'
-
-type RangePreset = '1M' | '3M' | '1Y' | 'YTD' | 'all'
+import type { NetWorthLineItem, NetWorthRangePreset, SnapshotWindow } from '../types'
 
 type NetWorthChartRow = {
   label: string
@@ -47,11 +46,6 @@ function indentLevel(item: NetWorthLineItem, items: NetWorthLineItem[]): number 
   return item.kind === 'section' ? 0 : item.kind === 'group' ? 1 : depth + 1
 }
 
-function parseBalanceInput(raw: string): number | null {
-  if (raw === '') return null
-  const num = Number(raw)
-  return Number.isFinite(num) ? num : null
-}
 
 export function NetWorthPage() {
   const scenario = useFinanceStore((s) => s.getActiveScenario())
@@ -65,15 +59,22 @@ export function NetWorthPage() {
   } = useFinanceStore()
 
   const fileRef = useRef<HTMLInputElement>(null)
-  const [rangePreset, setRangePreset] = useState<RangePreset>('all')
-  const [showProjection, setShowProjection] = useState(true)
+  const gridRef = useRef<HTMLTableElement>(null)
   const [importError, setImportError] = useState('')
-  const [manualDate, setManualDate] = useState(todayISO())
 
-  const { profile, netWorthLineItems, netWorthSnapshots, accounts } = scenario
-  const uiState = scenario.uiState ?? { netWorthExpandedGroups: {} as Record<string, boolean>, netWorthSnapshotWindow: 6 as const }
+  const { profile, netWorthLineItems, netWorthSnapshots, accounts, assumptions } = scenario
+  const uiState = scenario.uiState ?? {
+    netWorthExpandedGroups: {} as Record<string, boolean>,
+    netWorthSnapshotWindow: 6 as const,
+    netWorthRangePreset: 'all' as const,
+    netWorthShowProjection: true,
+    netWorthManualDate: todayISO(),
+  }
   const expandedGroups: Record<string, boolean> = uiState.netWorthExpandedGroups ?? {}
   const snapshotWindow = uiState.netWorthSnapshotWindow
+  const rangePreset: NetWorthRangePreset = uiState.netWorthRangePreset ?? 'all'
+  const showProjection = uiState.netWorthShowProjection ?? true
+  const manualDate = uiState.netWorthManualDate ?? todayISO()
 
   const effectiveSnapshots = useMemo(
     () => getEffectiveSnapshots(netWorthSnapshots, netWorthLineItems),
@@ -106,9 +107,10 @@ export function NetWorthPage() {
         netWorthLineItems,
         accounts,
         selectedRange.start,
-        selectedRange.end
+        selectedRange.end,
+        assumptions
       ),
-    [netWorthSnapshots, netWorthLineItems, accounts, selectedRange]
+    [netWorthSnapshots, netWorthLineItems, accounts, selectedRange, assumptions]
   )
 
   const historySeries = useMemo(
@@ -238,7 +240,7 @@ export function NetWorthPage() {
             type="date"
             value={manualDate}
             max={todayISO()}
-            onChange={(e) => setManualDate(e.target.value)}
+            onChange={(e) => updateUiState({ netWorthManualDate: e.target.value })}
             className="input-field w-auto"
           />
           <button
@@ -253,7 +255,7 @@ export function NetWorthPage() {
             <input
               type="checkbox"
               checked={showProjection}
-              onChange={(e) => setShowProjection(e.target.checked)}
+              onChange={(e) => updateUiState({ netWorthShowProjection: e.target.checked })}
             />
             Show 10-year projection
           </label>
@@ -287,11 +289,11 @@ export function NetWorthPage() {
       ) : (
         <>
           <div className="mt-6 flex flex-wrap gap-2">
-            {(['1M', '3M', '1Y', 'YTD', 'all'] as RangePreset[]).map((preset) => (
+            {(['1M', '3M', '1Y', 'YTD', 'all'] as NetWorthRangePreset[]).map((preset) => (
               <button
                 key={preset}
                 type="button"
-                onClick={() => setRangePreset(preset)}
+                onClick={() => updateUiState({ netWorthRangePreset: preset })}
                 className={`rounded-xl px-3 py-1.5 text-sm ${
                   rangePreset === preset
                     ? 'bg-ledger-gold/15 font-medium text-ledger-gold'
@@ -318,7 +320,7 @@ export function NetWorthPage() {
             <MetricCard
               label="Investment ROR"
               value={formatPercent((periodMetrics?.investmentRor ?? 0) * 100)}
-              sub="Modified Dietz (excl. contributions)"
+              sub="Modified Dietz (adj. contributions & distributions)"
               trend={(periodMetrics?.investmentRor ?? 0) >= 0 ? 'up' : 'down'}
             />
             <MetricCard
@@ -357,7 +359,7 @@ export function NetWorthPage() {
             </SectionCard>
           </div>
 
-          <div className="mt-8 grid gap-6 lg:grid-cols-2">
+          <div className={`mt-8 grid gap-6 ${showProjection ? '' : 'lg:grid-cols-2'}`}>
             <SectionCard title="Net worth history">
               <LineTrendChart
                 data={chartData}
@@ -371,17 +373,19 @@ export function NetWorthPage() {
                 ]}
               />
             </SectionCard>
-            <SectionCard title="Assets vs liabilities">
-              <LineTrendChart
-                data={historySeries}
-                xKey="label"
-                currency={profile.currency}
-                lines={[
-                  { key: 'assets', color: '#7d9b8a', label: 'Assets' },
-                  { key: 'liabilities', color: '#b85c5c', label: 'Liabilities' },
-                ]}
-              />
-            </SectionCard>
+            {!showProjection && (
+              <SectionCard title="Assets vs liabilities">
+                <LineTrendChart
+                  data={historySeries}
+                  xKey="label"
+                  currency={profile.currency}
+                  lines={[
+                    { key: 'assets', color: '#7d9b8a', label: 'Assets' },
+                    { key: 'liabilities', color: '#b85c5c', label: 'Liabilities' },
+                  ]}
+                />
+              </SectionCard>
+            )}
           </div>
 
           <SectionCard
@@ -415,7 +419,7 @@ export function NetWorthPage() {
               ))}
             </div>
             <div className="max-h-[70vh] overflow-auto">
-              <table className="w-full min-w-[640px] text-left text-sm">
+              <table ref={gridRef} className="w-full min-w-[640px] text-left text-sm">
                 <thead className="sticky top-0 z-10 bg-ledger-surface">
                   <tr className="border-b border-ledger-border text-ledger-muted">
                     <th className="sticky left-0 z-20 bg-ledger-surface px-3 py-2">Account</th>
@@ -440,7 +444,7 @@ export function NetWorthPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleRows.map((item) => {
+                  {visibleRows.map((item, rowIndex) => {
                     if (item.kind === 'group') {
                       const isExpanded = !!expandedGroups[item.id]
                       return (
@@ -453,19 +457,15 @@ export function NetWorthPage() {
                             <span className="mr-1 text-ledger-muted">{isExpanded ? '▾' : '▸'}</span>
                             {item.name}
                           </td>
-                          {visibleSnapshots.map((snapshot) => (
+                          {visibleSnapshots.map((snapshot, colIndex) => (
                             <td key={snapshot.id} className="px-3 py-1.5">
-                              <input
-                                type="number"
+                              <SnapshotBalanceInput
+                                gridRef={gridRef}
+                                rowIndex={rowIndex}
+                                colIndex={colIndex}
                                 className="input-field w-28 py-1 text-right text-sm font-medium"
                                 value={snapshot.balances[item.id] ?? ''}
-                                onChange={(e) => {
-                                  updateNetWorthBalance(
-                                    snapshot.id,
-                                    item.id,
-                                    parseBalanceInput(e.target.value)
-                                  )
-                                }}
+                                onChange={(val) => updateNetWorthBalance(snapshot.id, item.id, val)}
                               />
                             </td>
                           ))}
@@ -482,19 +482,15 @@ export function NetWorthPage() {
                         >
                           {item.name}
                         </td>
-                        {visibleSnapshots.map((snapshot) => (
+                        {visibleSnapshots.map((snapshot, colIndex) => (
                           <td key={snapshot.id} className="px-3 py-1.5">
-                            <input
-                              type="number"
+                            <SnapshotBalanceInput
+                              gridRef={gridRef}
+                              rowIndex={rowIndex}
+                              colIndex={colIndex}
                               className="input-field w-28 py-1 text-right text-sm"
                               value={snapshot.balances[item.id] ?? ''}
-                              onChange={(e) => {
-                                updateNetWorthBalance(
-                                  snapshot.id,
-                                  item.id,
-                                  parseBalanceInput(e.target.value)
-                                )
-                              }}
+                              onChange={(val) => updateNetWorthBalance(snapshot.id, item.id, val)}
                             />
                           </td>
                         ))}

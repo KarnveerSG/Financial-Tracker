@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useMemo, useState, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { PageHeader } from '../components/layout/AppLayout'
@@ -9,7 +9,7 @@ import { accountSchema, type AccountFormValues } from '../schemas/forms'
 import { formatCurrency, createId } from '../engine/format'
 import { getHoldingsValue, resolveAccountBalance } from '../engine/accounts'
 import { calculateLoanInterest } from '../engine/loans'
-import { computeHoldingGainLoss, getHoldingShares } from '../engine/costBasis'
+import { computeHoldingGainLoss, getHoldingShares, aggregateGainLoss } from '../engine/costBasis'
 import { parseLotsCsv, type LotsImportResult } from '../engine/lotsImport'
 
 const LIABILITY_TYPES = new Set(['loan', 'mortgage', 'credit'])
@@ -516,9 +516,31 @@ function AccountForm({
 
 export function AccountsPage() {
   const scenario = useFinanceStore((s) => s.getActiveScenario())
+  const priceCache = useFinanceStore((s) => s.priceCache)
   const { addAccount, updateAccount, removeAccount } = useFinanceStore()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
+
+  const livePrices = useMemo(() => {
+    const map: Record<string, number> = {}
+    for (const [ticker, quote] of Object.entries(priceCache)) {
+      map[ticker] = quote.price
+    }
+    return map
+  }, [priceCache])
+
+  const accountGainSummary = useMemo(() => {
+    const map = new Map<string, { gain: number; pct: number }>()
+    for (const row of aggregateGainLoss(scenario.accounts, undefined, livePrices).perAccount) {
+      const totalGain = row.gainLoss.reduce((s, g) => s + g.unrealizedGain, 0)
+      const totalCost = row.gainLoss.reduce((s, g) => s + g.totalCost, 0)
+      map.set(row.accountId, {
+        gain: totalGain,
+        pct: totalCost > 0 ? totalGain / totalCost : 0,
+      })
+    }
+    return map
+  }, [scenario.accounts, livePrices])
 
   const editingAccount = scenario.accounts.find((a) => a.id === editingId)
 
@@ -578,6 +600,7 @@ export function AccountsPage() {
             const balance = resolveAccountBalance(account)
             const loanInfo = account.isLiability ? calculateLoanInterest(account) : null
             const holdingsValue = account.holdings?.length ? getHoldingsValue(account.holdings) : 0
+            const gainSummary = accountGainSummary.get(account.id)
 
             return (
               <div key={account.id} className="card flex flex-wrap items-center justify-between gap-4">
@@ -589,6 +612,19 @@ export function AccountsPage() {
                     {account.isLiability && ' · Liability'}
                     {account.holdings?.length > 0 && ` · ${account.holdings.length} holding${account.holdings.length > 1 ? 's' : ''}`}
                   </p>
+                  {gainSummary && gainSummary.gain !== 0 && (
+                    <span
+                      className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs tabular-nums ${
+                        gainSummary.gain >= 0
+                          ? 'bg-ledger-success/15 text-ledger-success'
+                          : 'bg-ledger-danger/15 text-ledger-danger'
+                      }`}
+                    >
+                      {gainSummary.gain >= 0 ? '+' : ''}
+                      {formatCurrency(gainSummary.gain, scenario.profile.currency)} (
+                      {(gainSummary.pct * 100).toFixed(1)}%)
+                    </span>
+                  )}
                   {loanInfo && loanInfo.annualInterest > 0 && (
                     <p className="text-xs text-ledger-danger tabular-nums">
                       {formatCurrency(loanInfo.annualInterest, scenario.profile.currency)}/yr interest

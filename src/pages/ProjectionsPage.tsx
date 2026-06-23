@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import { PageHeader } from '../components/layout/AppLayout'
-import { SectionCard, InputRow } from '../components/shared/MetricCard'
+import { SectionCard, InputRow, MetricCard } from '../components/shared/MetricCard'
 import { MonteCarloFanChart } from '../components/charts/FinanceCharts'
 import { useFinanceStore } from '../store/useFinanceStore'
 import { runMonteCarloProjection } from '../engine/projections'
-import { formatPercent } from '../engine/format'
+import { fireProbabilityByRetirementAge } from '../engine/fire'
+import { formatCurrency, formatPercent } from '../engine/format'
 
 export function ProjectionsPage() {
   const scenario = useFinanceStore((s) => s.getActiveScenario())
@@ -13,10 +14,16 @@ export function ProjectionsPage() {
   const { assumptions, profile, accounts } = scenario
   const [showReal, setShowReal] = useState(false)
   const [simulations, setSimulations] = useState(500)
+  const [whatIfRetirementAge, setWhatIfRetirementAge] = useState(profile.retirementAge)
 
   const monteCarlo = useMemo(
     () => runMonteCarloProjection(accounts, profile, assumptions, simulations),
     [accounts, profile, assumptions, simulations]
+  )
+
+  const retirementWhatIf = useMemo(
+    () => fireProbabilityByRetirementAge(scenario, whatIfRetirementAge, 200),
+    [scenario, whatIfRetirementAge]
   )
 
   return (
@@ -98,6 +105,15 @@ export function ProjectionsPage() {
                 className="input-field tabular-nums"
               />
             </InputRow>
+            <InputRow label="Portfolio Dividend Yield (%)">
+              <input
+                type="number"
+                step="0.1"
+                value={assumptions.portfolioDividendYield}
+                onChange={(e) => updateAssumptions({ portfolioDividendYield: +e.target.value })}
+                className="input-field tabular-nums"
+              />
+            </InputRow>
             <InputRow label="Simulations">
               <select
                 value={simulations}
@@ -151,6 +167,43 @@ export function ProjectionsPage() {
             </div>
           </SectionCard>
         </div>
+      </div>
+
+      <div className="mt-8">
+        <SectionCard title="What if I retire at age…?">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div>
+              <label className="label">
+                Retirement age: {whatIfRetirementAge}
+              </label>
+              <input
+                type="range"
+                min={profile.currentAge}
+                max={profile.lifeExpectancy}
+                value={whatIfRetirementAge}
+                onChange={(e) => setWhatIfRetirementAge(+e.target.value)}
+                className="w-full"
+              />
+              <p className="mt-2 text-xs text-ledger-muted">
+                Drag to explore FIRE probability without changing your saved profile.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <MetricCard
+                label="FIRE probability"
+                value={formatPercent(retirementWhatIf.probability, 0)}
+              />
+              <MetricCard
+                label="Median portfolio"
+                value={formatCurrency(retirementWhatIf.medianPortfolio, profile.currency)}
+              />
+              <MetricCard
+                label="Years to retire"
+                value={String(retirementWhatIf.yearsToRetire)}
+              />
+            </div>
+          </div>
+        </SectionCard>
       </div>
     </div>
   )

@@ -31,11 +31,10 @@ if (
 import {
   buildLineItemsFromAccounts,
   mapAccountsToSnapshotBalances,
-  parseNwTrackerXlsx,
 } from '../engine/networth'
 import { fetchQuotes } from '../lib/quoteClient'
 
-const SCHEMA_VERSION = 3
+const SCHEMA_VERSION = 4
 
 function defaultMarketData(): UserProfile['marketData'] {
   return {
@@ -52,6 +51,9 @@ function defaultUiState(): ScenarioUiState {
     netWorthExpandedGroups: {},
     netWorthSnapshotWindow: 6,
     portfolioBreakdownTab: 'taxBucket',
+    netWorthRangePreset: 'all',
+    netWorthShowProjection: true,
+    netWorthManualDate: new Date().toISOString().slice(0, 10),
   }
 }
 
@@ -78,6 +80,7 @@ function defaultAssumptions(): ProjectionAssumptions {
     returnStdDev: 15,
     salaryGrowthRate: 3,
     contributionGrowthRate: 3,
+    portfolioDividendYield: 0,
   }
 }
 
@@ -111,6 +114,19 @@ function defaultPaycheckInputs(): PaycheckInputs {
     healthInsurance: 3600,
     otherDeductions: 0,
     frequency: 'biweekly',
+    selfEmployedEnabled: false,
+    selfEmployedNetIncome: 0,
+    solo401k: 0,
+  }
+}
+
+function migratePaycheckInputs(inputs?: PaycheckInputs): PaycheckInputs {
+  return {
+    ...defaultPaycheckInputs(),
+    ...inputs,
+    selfEmployedEnabled: inputs?.selfEmployedEnabled ?? false,
+    selfEmployedNetIncome: inputs?.selfEmployedNetIncome ?? 0,
+    solo401k: inputs?.solo401k ?? 0,
   }
 }
 
@@ -132,10 +148,14 @@ function migrateAccount(account: Account): Account {
 
 function migrateScenario(scenario?: Scenario): Scenario {
   if (!scenario) return createScenario()
-  if ((scenario.schemaVersion ?? 0) >= SCHEMA_VERSION) {
+  const version = scenario.schemaVersion ?? 0
+  if (version >= SCHEMA_VERSION) {
     return {
       ...scenario,
       accounts: (scenario.accounts ?? []).map(migrateAccount),
+      paycheckInputs: migratePaycheckInputs(scenario.paycheckInputs),
+      assumptions: { ...defaultAssumptions(), ...scenario.assumptions },
+      uiState: { ...defaultUiState(), ...scenario.uiState },
     }
   }
   return {
@@ -145,7 +165,9 @@ function migrateScenario(scenario?: Scenario): Scenario {
     budgetInputs: scenario.budgetInputs ?? defaultBudgetInputs(),
     netWorthLineItems: scenario.netWorthLineItems ?? [],
     netWorthSnapshots: scenario.netWorthSnapshots ?? [],
+    paycheckInputs: migratePaycheckInputs(scenario.paycheckInputs),
     uiState: { ...defaultUiState(), ...scenario.uiState },
+    assumptions: { ...defaultAssumptions(), ...scenario.assumptions },
     profile: {
       ...defaultProfile(),
       ...scenario.profile,
@@ -233,7 +255,7 @@ interface FinanceStore extends AppState {
   completeOnboarding: () => void
   toggleLightMode: () => void
   getActiveScenario: () => Scenario
-  importNetWorthFromXlsx: (buffer: ArrayBuffer) => void
+  importNetWorthFromXlsx: (buffer: ArrayBuffer) => Promise<void>
   setNetWorthData: (lineItems: NetWorthLineItem[], snapshots: NetWorthSnapshot[]) => void
   addNetWorthSnapshot: (date: string, balances?: Record<string, number>) => void
   updateNetWorthSnapshot: (id: string, partial: Partial<Pick<NetWorthSnapshot, 'date' | 'balances'>>) => void
@@ -474,8 +496,9 @@ export const useFinanceStore = create<FinanceStore>()(
           profile: { ...s.profile, lightMode: !s.profile.lightMode },
         })),
 
-      importNetWorthFromXlsx: (buffer) => {
-        const { lineItems, snapshots } = parseNwTrackerXlsx(buffer)
+      importNetWorthFromXlsx: async (buffer) => {
+        const { parseNwTrackerXlsx } = await import('../engine/networthXlsx')
+        const { lineItems, snapshots } = await parseNwTrackerXlsx(buffer)
         get().updateActiveScenario((s) => ({
           ...s,
           netWorthLineItems: lineItems,

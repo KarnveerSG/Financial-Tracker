@@ -19,6 +19,9 @@ const ProjectionsPage = lazy(() =>
 const AnalyticsPage = lazy(() =>
   import('./pages/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage }))
 )
+const CompareScenariosPage = lazy(() =>
+  import('./pages/CompareScenariosPage').then((m) => ({ default: m.CompareScenariosPage }))
+)
 
 function RouteFallback() {
   return (
@@ -96,6 +99,7 @@ function AppRoutes() {
       <Route path="/paycheck" element={<Protected><PaycheckPage /></Protected>} />
       <Route path="/budget" element={<Protected><BudgetPage /></Protected>} />
       <Route path="/analytics" element={<Protected><Suspense fallback={<RouteFallback />}><AnalyticsPage /></Suspense></Protected>} />
+      <Route path="/analytics/compare" element={<Protected><Suspense fallback={<RouteFallback />}><CompareScenariosPage /></Suspense></Protected>} />
       <Route path="/settings" element={<Protected><SettingsPage /></Protected>} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

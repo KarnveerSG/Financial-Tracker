@@ -86,6 +86,37 @@ export function PaycheckPage() {
             <InputRow label="Other Deductions (annual)">
               <input type="number" value={paycheckInputs.otherDeductions} onChange={(e) => updatePaycheckInputs({ otherDeductions: +e.target.value })} className="input-field tabular-nums" />
             </InputRow>
+            <div className="sm:col-span-2 border-t border-ledger-border pt-4">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  checked={paycheckInputs.selfEmployedEnabled}
+                  onChange={(e) => updatePaycheckInputs({ selfEmployedEnabled: e.target.checked })}
+                  className="rounded"
+                />
+                I have self-employed / 1099 income
+              </label>
+            </div>
+            {paycheckInputs.selfEmployedEnabled && (
+              <>
+                <InputRow label="1099 Net Income (annual)">
+                  <input
+                    type="number"
+                    value={paycheckInputs.selfEmployedNetIncome}
+                    onChange={(e) => updatePaycheckInputs({ selfEmployedNetIncome: +e.target.value })}
+                    className="input-field tabular-nums"
+                  />
+                </InputRow>
+                <InputRow label="Solo 401(k) (annual)">
+                  <input
+                    type="number"
+                    value={paycheckInputs.solo401k}
+                    onChange={(e) => updatePaycheckInputs({ solo401k: +e.target.value })}
+                    className="input-field tabular-nums"
+                  />
+                </InputRow>
+              </>
+            )}
           </div>
         </SectionCard>
 
@@ -96,6 +127,9 @@ export function PaycheckPage() {
             <div className="flex justify-between"><span className="text-ledger-muted">State</span><span className="tabular-nums">{formatCurrencyPrecise(paycheck.stateTax, profile.currency)}</span></div>
             <div className="flex justify-between"><span className="text-ledger-muted">Social Security</span><span className="tabular-nums">{formatCurrencyPrecise(paycheck.socialSecurity, profile.currency)}</span></div>
             <div className="flex justify-between"><span className="text-ledger-muted">Medicare</span><span className="tabular-nums">{formatCurrencyPrecise(paycheck.medicare, profile.currency)}</span></div>
+            {paycheck.selfEmploymentTax > 0 && (
+              <div className="flex justify-between"><span className="text-ledger-muted">SE Tax</span><span className="tabular-nums">{formatCurrencyPrecise(paycheck.selfEmploymentTax, profile.currency)}</span></div>
+            )}
           </div>
         </SectionCard>
 
