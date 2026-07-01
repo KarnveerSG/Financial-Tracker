@@ -1,32 +1,11 @@
 import { NavLink } from 'react-router-dom'
+import { getVisibleNavItems } from '../../config/navigation'
 import { useFinanceStore } from '../../store/useFinanceStore'
 
-const NAV = [
-  { to: '/dashboard', label: 'Dashboard', icon: '◈' },
-  { to: '/net-worth', label: 'Net Worth', icon: '◆' },
-  { to: '/accounts', label: 'Accounts', icon: '▤' },
-  { to: '/transactions', label: 'Transactions', icon: '⇄' },
-  { to: '/cash-flow', label: 'Cash Flow', icon: '≈' },
-  { to: '/goals', label: 'Goals & Funds', icon: '★' },
-  { to: '/projections', label: 'Projections', icon: '↗' },
-  { to: '/mortgage', label: 'Mortgage', icon: '⌂' },
-  { to: '/debt-payoff', label: 'Debt Payoff', icon: '⇢' },
-  { to: '/credit', label: 'Credit', icon: '◔' },
-  { to: '/insurance', label: 'Insurance', icon: '⛨' },
-  { to: '/fire', label: 'FIRE & CoastFI', icon: '◎' },
-  { to: '/retirement', label: 'Retirement Toolkit', icon: '⚭' },
-  { to: '/tax', label: 'Tax Planning', icon: '◫' },
-  { to: '/tax-loss-harvest', label: 'Tax-Loss Harvest', icon: '▼' },
-  { to: '/paycheck', label: 'Paycheck', icon: '◧' },
-  { to: '/budget', label: 'Budget', icon: '◨' },
-  { to: '/analytics', label: 'Analytics', icon: '◉' },
-  { to: '/analytics/compare', label: 'Compare', icon: '⇋' },
-  { to: '/settings', label: 'Settings', icon: '⚙' },
-]
-
 export function AppLayout({ children }: { children: React.ReactNode }) {
-  const { getActiveScenario, toggleLightMode } = useFinanceStore()
+  const { getActiveScenario, toggleLightMode, disabledNavIds } = useFinanceStore()
   const scenario = getActiveScenario()
+  const navItems = getVisibleNavItems(disabledNavIds)
 
   return (
     <div className="min-h-dvh lg:flex">
@@ -38,7 +17,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
         <nav className="flex gap-1 overflow-x-auto px-2 pb-3 lg:flex-col lg:overflow-visible lg:px-3 lg:pb-6">
-          {NAV.map((item) => (
+          {navItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}

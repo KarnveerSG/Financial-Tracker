@@ -26,6 +26,7 @@ import type {
 import { DEFAULT_ALLOCATION_CATEGORIES, DEFAULT_BUDGET_CATEGORIES } from '../types'
 import { createDefaultAccount } from '../engine/accounts'
 import { createId } from '../engine/format'
+import type { NavItemId } from '../config/navigation'
 
 if (
   typeof localStorage !== 'undefined' &&
@@ -366,6 +367,7 @@ interface FinanceStore extends AppState {
   addCreditScore: (entry: Omit<CreditScoreEntry, 'id'>) => void
   updateCreditScore: (id: string, partial: Partial<CreditScoreEntry>) => void
   removeCreditScore: (id: string) => void
+  setNavItemEnabled: (id: NavItemId, enabled: boolean) => void
   // full backup/restore
   exportFullState: () => string
   importFullState: (raw: string) => void
@@ -378,6 +380,7 @@ const initialState: AppState = {
   activeScenarioId: initialScenario.id,
   hasOnboarded: false,
   priceCache: {},
+  disabledNavIds: [],
 }
 
 function migrateLegacyData(): AppState | null {
@@ -410,7 +413,7 @@ function migrateLegacyData(): AppState | null {
       ]
     }
 
-    return { scenarios: [scenario], activeScenarioId: scenario.id, hasOnboarded: true, priceCache: {} }
+    return { scenarios: [scenario], activeScenarioId: scenario.id, hasOnboarded: true, priceCache: {}, disabledNavIds: [] }
   } catch {
     return null
   }
@@ -583,10 +586,15 @@ export const useFinanceStore = create<FinanceStore>()(
 
       resetAll: () => {
         const fresh = createScenario()
-        set({ scenarios: [fresh], activeScenarioId: fresh.id, hasOnboarded: false })
+        set({ scenarios: [fresh], activeScenarioId: fresh.id, hasOnboarded: false, disabledNavIds: [] })
       },
 
-      importState: (state) => set({ ...state }),
+      importState: (state) =>
+        set({
+          ...state,
+          priceCache: state.priceCache ?? {},
+          disabledNavIds: state.disabledNavIds ?? [],
+        }),
 
       completeOnboarding: () => set({ hasOnboarded: true }),
 
@@ -884,9 +892,21 @@ export const useFinanceStore = create<FinanceStore>()(
           creditScoreHistory: (s.creditScoreHistory ?? []).filter((c) => c.id !== id),
         })),
 
+      setNavItemEnabled: (id, enabled) =>
+        set((s) => {
+          const has = s.disabledNavIds.includes(id)
+          if (enabled && has) {
+            return { disabledNavIds: s.disabledNavIds.filter((x) => x !== id) }
+          }
+          if (!enabled && !has) {
+            return { disabledNavIds: [...s.disabledNavIds, id] }
+          }
+          return s
+        }),
+
       exportFullState: () => {
-        const { scenarios, activeScenarioId, hasOnboarded, priceCache } = get()
-        return JSON.stringify({ scenarios, activeScenarioId, hasOnboarded, priceCache }, null, 2)
+        const { scenarios, activeScenarioId, hasOnboarded, priceCache, disabledNavIds } = get()
+        return JSON.stringify({ scenarios, activeScenarioId, hasOnboarded, priceCache, disabledNavIds }, null, 2)
       },
       importFullState: (raw) => {
         const parsed = JSON.parse(raw) as AppState
@@ -896,6 +916,7 @@ export const useFinanceStore = create<FinanceStore>()(
           activeScenarioId: parsed.activeScenarioId ?? parsed.scenarios[0].id,
           hasOnboarded: parsed.hasOnboarded ?? true,
           priceCache: parsed.priceCache ?? {},
+          disabledNavIds: parsed.disabledNavIds ?? [],
         })
       },
     }),
@@ -905,6 +926,7 @@ export const useFinanceStore = create<FinanceStore>()(
         if (state) {
           state.scenarios = state.scenarios.map(migrateScenario)
           state.priceCache = state.priceCache ?? {}
+          state.disabledNavIds = state.disabledNavIds ?? []
         }
         if (state && state.scenarios.length === 0) {
           const migrated = migrateLegacyData()
@@ -916,6 +938,7 @@ export const useFinanceStore = create<FinanceStore>()(
         activeScenarioId: state.activeScenarioId,
         hasOnboarded: state.hasOnboarded,
         priceCache: state.priceCache,
+        disabledNavIds: state.disabledNavIds,
       }),
     }
   )

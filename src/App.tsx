@@ -21,6 +21,7 @@ import { TaxLossHarvestPage } from './pages/TaxLossHarvestPage'
 import { RetirementPage } from './pages/RetirementPage'
 import { useFinanceStore } from './store/useFinanceStore'
 import { isElectronFile } from './lib/isElectron'
+import { isNavItemEnabled, navItemForPath } from './config/navigation'
 
 const ProjectionsPage = lazy(() =>
   import('./pages/ProjectionsPage').then((m) => ({ default: m.ProjectionsPage }))
@@ -112,30 +113,47 @@ function Protected({ children }: { children: React.ReactNode }) {
   return <AppLayout>{children}</AppLayout>
 }
 
+function NavGuard({ path, children }: { path: string; children: React.ReactNode }) {
+  const disabledNavIds = useFinanceStore((s) => s.disabledNavIds)
+  const item = navItemForPath(path)
+  if (item && !isNavItemEnabled(disabledNavIds, item.id)) {
+    return <Navigate to="/dashboard" replace />
+  }
+  return children
+}
+
+function GuardedRoute({ path, children }: { path: string; children: React.ReactNode }) {
+  return (
+    <Protected>
+      <NavGuard path={path}>{children}</NavGuard>
+    </Protected>
+  )
+}
+
 function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<OnboardingPage />} />
-      <Route path="/dashboard" element={<Protected><DashboardPage /></Protected>} />
-      <Route path="/net-worth" element={<Protected><NetWorthPage /></Protected>} />
-      <Route path="/accounts" element={<Protected><AccountsPage /></Protected>} />
-      <Route path="/projections" element={<Protected><Suspense fallback={<RouteFallback />}><ProjectionsPage /></Suspense></Protected>} />
-      <Route path="/fire" element={<Protected><FirePage /></Protected>} />
-      <Route path="/tax" element={<Protected><TaxPage /></Protected>} />
-      <Route path="/paycheck" element={<Protected><PaycheckPage /></Protected>} />
-      <Route path="/budget" element={<Protected><BudgetPage /></Protected>} />
-      <Route path="/transactions" element={<Protected><TransactionsPage /></Protected>} />
-      <Route path="/mortgage" element={<Protected><MortgagePage /></Protected>} />
-      <Route path="/debt-payoff" element={<Protected><DebtPayoffPage /></Protected>} />
-      <Route path="/cash-flow" element={<Protected><CashFlowPage /></Protected>} />
-      <Route path="/goals" element={<Protected><GoalsPage /></Protected>} />
-      <Route path="/insurance" element={<Protected><InsurancePage /></Protected>} />
-      <Route path="/credit" element={<Protected><CreditPage /></Protected>} />
-      <Route path="/tax-loss-harvest" element={<Protected><TaxLossHarvestPage /></Protected>} />
-      <Route path="/retirement" element={<Protected><RetirementPage /></Protected>} />
-      <Route path="/analytics" element={<Protected><Suspense fallback={<RouteFallback />}><AnalyticsPage /></Suspense></Protected>} />
-      <Route path="/analytics/compare" element={<Protected><Suspense fallback={<RouteFallback />}><CompareScenariosPage /></Suspense></Protected>} />
-      <Route path="/settings" element={<Protected><SettingsPage /></Protected>} />
+      <Route path="/dashboard" element={<GuardedRoute path="/dashboard"><DashboardPage /></GuardedRoute>} />
+      <Route path="/net-worth" element={<GuardedRoute path="/net-worth"><NetWorthPage /></GuardedRoute>} />
+      <Route path="/accounts" element={<GuardedRoute path="/accounts"><AccountsPage /></GuardedRoute>} />
+      <Route path="/projections" element={<GuardedRoute path="/projections"><Suspense fallback={<RouteFallback />}><ProjectionsPage /></Suspense></GuardedRoute>} />
+      <Route path="/fire" element={<GuardedRoute path="/fire"><FirePage /></GuardedRoute>} />
+      <Route path="/tax" element={<GuardedRoute path="/tax"><TaxPage /></GuardedRoute>} />
+      <Route path="/paycheck" element={<GuardedRoute path="/paycheck"><PaycheckPage /></GuardedRoute>} />
+      <Route path="/budget" element={<GuardedRoute path="/budget"><BudgetPage /></GuardedRoute>} />
+      <Route path="/transactions" element={<GuardedRoute path="/transactions"><TransactionsPage /></GuardedRoute>} />
+      <Route path="/mortgage" element={<GuardedRoute path="/mortgage"><MortgagePage /></GuardedRoute>} />
+      <Route path="/debt-payoff" element={<GuardedRoute path="/debt-payoff"><DebtPayoffPage /></GuardedRoute>} />
+      <Route path="/cash-flow" element={<GuardedRoute path="/cash-flow"><CashFlowPage /></GuardedRoute>} />
+      <Route path="/goals" element={<GuardedRoute path="/goals"><GoalsPage /></GuardedRoute>} />
+      <Route path="/insurance" element={<GuardedRoute path="/insurance"><InsurancePage /></GuardedRoute>} />
+      <Route path="/credit" element={<GuardedRoute path="/credit"><CreditPage /></GuardedRoute>} />
+      <Route path="/tax-loss-harvest" element={<GuardedRoute path="/tax-loss-harvest"><TaxLossHarvestPage /></GuardedRoute>} />
+      <Route path="/retirement" element={<GuardedRoute path="/retirement"><RetirementPage /></GuardedRoute>} />
+      <Route path="/analytics" element={<GuardedRoute path="/analytics"><Suspense fallback={<RouteFallback />}><AnalyticsPage /></Suspense></GuardedRoute>} />
+      <Route path="/analytics/compare" element={<GuardedRoute path="/analytics/compare"><Suspense fallback={<RouteFallback />}><CompareScenariosPage /></Suspense></GuardedRoute>} />
+      <Route path="/settings" element={<GuardedRoute path="/settings"><SettingsPage /></GuardedRoute>} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   )

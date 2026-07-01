@@ -10,6 +10,7 @@ import { accountsToCsv, parseAccountsCsv, resolveAccountBalance } from '../engin
 import { computeSnapshotTotals, getLatestEffectiveSnapshot } from '../engine/networth'
 import { formatCurrency } from '../engine/format'
 import { CURRENCIES, DEFAULT_ALLOCATION_CATEGORIES } from '../types'
+import { getToggleableNavItems, isNavItemEnabled } from '../config/navigation'
 
 export function SettingsPage() {
   const state = useFinanceStore()
@@ -26,6 +27,8 @@ export function SettingsPage() {
     resetAll,
     importState,
     getActiveScenario,
+    disabledNavIds,
+    setNavItemEnabled,
   } = state
 
   const scenario = getActiveScenario()
@@ -35,7 +38,7 @@ export function SettingsPage() {
   const csvRef = useRef<HTMLInputElement>(null)
 
   const handleExportJson = () => {
-    const json = exportAppState({ scenarios, activeScenarioId, hasOnboarded: true, priceCache: state.priceCache })
+    const json = exportAppState({ scenarios, activeScenarioId, hasOnboarded: true, priceCache: state.priceCache, disabledNavIds: state.disabledNavIds })
     const blob = new Blob([json], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -111,6 +114,29 @@ export function SettingsPage() {
       <PageHeader title="Settings" subtitle="Scenarios, data management, and customization" />
 
       <div className="grid gap-6 lg:grid-cols-2">
+        <SectionCard title="Navigation">
+          <p className="mb-4 text-sm text-ledger-muted">
+            Show or hide sidebar tabs. Dashboard and Settings always stay visible.
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {getToggleableNavItems().map((item) => {
+              const enabled = isNavItemEnabled(disabledNavIds, item.id)
+              return (
+                <label key={item.id} className="flex cursor-pointer items-center gap-3 rounded-xl bg-ledger-bg/50 px-3 py-2.5 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={enabled}
+                    onChange={(e) => setNavItemEnabled(item.id, e.target.checked)}
+                    className="rounded"
+                  />
+                  <span aria-hidden className="text-ledger-muted">{item.icon}</span>
+                  <span>{item.label}</span>
+                </label>
+              )
+            })}
+          </div>
+        </SectionCard>
+
         <SectionCard title="Profile">
           <div className="space-y-4">
             <InputRow label="Name">

@@ -332,6 +332,8 @@ export interface AppState {
   activeScenarioId: string
   hasOnboarded: boolean
   priceCache: Record<string, PriceQuote>
+  /** Nav item ids hidden from sidebar (see config/navigation.ts) */
+  disabledNavIds: string[]
 }
 
 export const ACCOUNT_TYPES: { value: AccountType; label: string; defaultTax: TaxTreatment; defaultCategory: AllocationCategoryId; isLiability?: boolean }[] = [

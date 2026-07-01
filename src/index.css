@@ -47,6 +47,11 @@
     @apply rounded-2xl border border-ledger-border bg-ledger-surface p-6 shadow-card;
   }
 
+  .grid + .card,
+  .card + .card {
+    @apply mt-6;
+  }
+
   .label {
     @apply mb-1.5 block text-xs font-medium uppercase tracking-wider text-ledger-muted;
   }
