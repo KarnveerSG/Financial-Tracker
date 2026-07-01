@@ -234,6 +234,74 @@ export interface StockTransaction {
   notes?: string
 }
 
+// --- Cash flow ledger ---
+export type CashFlowKind = 'income' | 'expense' | 'transfer'
+export type CashFlowFrequency = 'once' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly'
+
+export interface CashFlowEntry {
+  id: string
+  date: string
+  accountId?: string
+  categoryId?: string
+  kind: CashFlowKind
+  amount: number
+  description: string
+  recurring?: boolean
+  frequency?: CashFlowFrequency
+  endDate?: string
+  notes?: string
+}
+
+// --- Goals & sinking funds ---
+export type GoalKind = 'emergency_fund' | 'down_payment' | 'vacation' | 'car' | 'wedding' | 'other'
+
+export interface FinancialGoal {
+  id: string
+  name: string
+  kind: GoalKind
+  targetAmount: number
+  currentAmount: number
+  targetDate?: string
+  linkedAccountId?: string
+  monthlyContribution?: number
+  notes?: string
+}
+
+export interface SinkingFund {
+  id: string
+  name: string
+  targetAmount: number
+  currentAmount: number
+  dueDate?: string
+  monthlyContribution: number
+}
+
+// --- Insurance ---
+export type InsuranceKind = 'life' | 'disability' | 'health' | 'auto' | 'home' | 'umbrella' | 'other'
+
+export interface InsurancePolicy {
+  id: string
+  name: string
+  kind: InsuranceKind
+  provider: string
+  premium: number
+  premiumFrequency: 'monthly' | 'quarterly' | 'yearly'
+  coverageAmount: number
+  renewalDate?: string
+  beneficiary?: string
+  policyNumber?: string
+  notes?: string
+}
+
+// --- Credit score history ---
+export interface CreditScoreEntry {
+  id: string
+  date: string
+  score: number
+  bureau: 'equifax' | 'experian' | 'transunion' | 'other'
+  notes?: string
+}
+
 export interface Scenario {
   id: string
   name: string
@@ -251,6 +319,11 @@ export interface Scenario {
   netWorthLineItems: NetWorthLineItem[]
   netWorthSnapshots: NetWorthSnapshot[]
   stockTransactions?: StockTransaction[]
+  cashFlowEntries?: CashFlowEntry[]
+  goals?: FinancialGoal[]
+  sinkingFunds?: SinkingFund[]
+  insurancePolicies?: InsurancePolicy[]
+  creditScoreHistory?: CreditScoreEntry[]
   uiState?: ScenarioUiState
 }
 

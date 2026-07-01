@@ -15,6 +15,7 @@ import { sumDebtInterest } from '../engine/loans'
 import { calculateFireResults, calculateCoastFiResults } from '../engine/fire'
 import { buildNetWorthGrowthSeries } from '../engine/projections'
 import { formatCurrency, formatPercent } from '../engine/format'
+import { estimateContributionUsage } from '../engine/contributionLimits'
 
 const HOLDINGS_PROMPT_KEY = 'midnight-ledger-holdings-prompt-dismissed'
 
@@ -127,6 +128,32 @@ export function DashboardPage() {
               { key: 'real', color: '#7d9b8a', label: 'Inflation-adjusted' },
             ]}
           />
+        </SectionCard>
+      </div>
+
+      <div className="mt-8">
+        <SectionCard title="Contribution limits YTD">
+          <div className="grid gap-4 sm:grid-cols-3">
+            {estimateContributionUsage(scenario.paycheckInputs, accounts, profile.currentAge).map((u) => {
+              const barColor = u.status === 'exceeded' ? '#c96555' : u.status === 'warn' ? '#c9a962' : '#7d9b8a'
+              return (
+                <div key={u.bucket} className="rounded-xl border border-ledger-border p-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium uppercase tracking-wider">{u.bucket}</p>
+                    <span className="text-xs text-ledger-muted">{u.percentUsed.toFixed(0)}%</span>
+                  </div>
+                  <div className="mt-2 h-2 w-full rounded-full bg-ledger-border overflow-hidden">
+                    <div className="h-full" style={{ width: `${Math.min(100, u.percentUsed)}%`, background: barColor }} />
+                  </div>
+                  <p className="mt-1 text-xs text-ledger-muted tabular-nums">
+                    {formatCurrency(u.contributedYtd, profile.currency)} of {formatCurrency(u.limit, profile.currency)}
+                  </p>
+                  {u.status === 'warn' && <p className="mt-1 text-xs text-ledger-gold">Nearing annual limit</p>}
+                  {u.status === 'exceeded' && <p className="mt-1 text-xs text-ledger-danger">Exceeded — check overcontribution</p>}
+                </div>
+              )
+            })}
+          </div>
         </SectionCard>
       </div>
 

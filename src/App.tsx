@@ -13,6 +13,11 @@ import { SettingsPage } from './pages/SettingsPage'
 import { TransactionsPage } from './pages/TransactionsPage'
 import { MortgagePage } from './pages/MortgagePage'
 import { DebtPayoffPage } from './pages/DebtPayoffPage'
+import { CashFlowPage } from './pages/CashFlowPage'
+import { GoalsPage } from './pages/GoalsPage'
+import { InsurancePage } from './pages/InsurancePage'
+import { CreditPage } from './pages/CreditPage'
+import { TaxLossHarvestPage } from './pages/TaxLossHarvestPage'
 import { useFinanceStore } from './store/useFinanceStore'
 import { isElectronFile } from './lib/isElectron'
 
@@ -121,6 +126,11 @@ function AppRoutes() {
       <Route path="/transactions" element={<Protected><TransactionsPage /></Protected>} />
       <Route path="/mortgage" element={<Protected><MortgagePage /></Protected>} />
       <Route path="/debt-payoff" element={<Protected><DebtPayoffPage /></Protected>} />
+      <Route path="/cash-flow" element={<Protected><CashFlowPage /></Protected>} />
+      <Route path="/goals" element={<Protected><GoalsPage /></Protected>} />
+      <Route path="/insurance" element={<Protected><InsurancePage /></Protected>} />
+      <Route path="/credit" element={<Protected><CreditPage /></Protected>} />
+      <Route path="/tax-loss-harvest" element={<Protected><TaxLossHarvestPage /></Protected>} />
       <Route path="/analytics" element={<Protected><Suspense fallback={<RouteFallback />}><AnalyticsPage /></Suspense></Protected>} />
       <Route path="/analytics/compare" element={<Protected><Suspense fallback={<RouteFallback />}><CompareScenariosPage /></Suspense></Protected>} />
       <Route path="/settings" element={<Protected><SettingsPage /></Protected>} />

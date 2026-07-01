@@ -5,6 +5,10 @@ import type {
   AllocationCategoryDef,
   AppState,
   BudgetInputs,
+  CashFlowEntry,
+  CreditScoreEntry,
+  FinancialGoal,
+  InsurancePolicy,
   NetWorthLineItem,
   NetWorthSnapshot,
   PaycheckInputs,
@@ -12,6 +16,7 @@ import type {
   FireSettings,
   Scenario,
   ScenarioUiState,
+  SinkingFund,
   StockHolding,
   StockTransaction,
   StressScenarioInputs,
@@ -220,14 +225,79 @@ function createDemoScenario(): Scenario {
     createDefaultAccount({ name: '401(k)', accountType: '401k', balance: 85000, monthlyContribution: 1500, employerMatchPercent: 50 }),
     createDefaultAccount({ name: 'Roth IRA', accountType: 'roth_ira', balance: 42000, monthlyContribution: 500 }),
     createDefaultAccount({ name: 'Brokerage', accountType: 'brokerage', balance: 28000, monthlyContribution: 800, holdings: [
-      { id: createId(), ticker: 'VTI', shares: 50, pricePerShare: 240 },
-      { id: createId(), ticker: 'AAPL', shares: 20, pricePerShare: 190 },
+      { id: createId(), ticker: 'VTI', shares: 50, pricePerShare: 240, lots: [
+        { id: createId(), shares: 30, costPerShare: 180, acquiredDate: '2022-03-15' },
+        { id: createId(), shares: 20, costPerShare: 260, acquiredDate: '2025-01-10' },
+      ] },
+      { id: createId(), ticker: 'AAPL', shares: 20, pricePerShare: 190, lots: [
+        { id: createId(), shares: 20, costPerShare: 220, acquiredDate: '2025-06-01' },
+      ] },
     ], syncBalanceFromHoldings: true }),
     createDefaultAccount({ name: 'HYSA', accountType: 'hysa', balance: 15000, monthlyContribution: 400 }),
     createDefaultAccount({ name: 'Checking', accountType: 'checking', balance: 5000, monthlyContribution: 0 }),
     createDefaultAccount({ name: 'Car Loan', accountType: 'loan', balance: 8500, isLiability: true, interestRate: 6.5, loanTermMonths: 36, monthlyContribution: 250 }),
   ]
+  scenario.cashFlowEntries = seedCashFlow()
+  scenario.goals = seedGoals()
+  scenario.sinkingFunds = seedSinkingFunds()
+  scenario.insurancePolicies = seedInsurance()
+  scenario.creditScoreHistory = seedCreditScores()
   return scenario
+}
+
+function seedCashFlow(): CashFlowEntry[] {
+  const today = new Date()
+  const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10)
+  const midMonth = new Date(today.getFullYear(), today.getMonth(), 15).toISOString().slice(0, 10)
+  return [
+    { id: createId(), date: firstOfMonth, kind: 'income', amount: 6500, description: 'Salary', recurring: true, frequency: 'monthly', categoryId: 'salary' },
+    { id: createId(), date: firstOfMonth, kind: 'expense', amount: 2200, description: 'Rent', recurring: true, frequency: 'monthly', categoryId: 'housing' },
+    { id: createId(), date: midMonth, kind: 'expense', amount: 180, description: 'Electric bill', recurring: true, frequency: 'monthly', categoryId: 'utilities' },
+    { id: createId(), date: firstOfMonth, kind: 'expense', amount: 65, description: 'Internet', recurring: true, frequency: 'monthly', categoryId: 'utilities' },
+    { id: createId(), date: midMonth, kind: 'expense', amount: 600, description: 'Groceries', recurring: true, frequency: 'monthly', categoryId: 'food' },
+    { id: createId(), date: firstOfMonth, kind: 'expense', amount: 45, description: 'Netflix + Spotify', recurring: true, frequency: 'monthly', categoryId: 'entertainment' },
+    { id: createId(), date: firstOfMonth, kind: 'expense', amount: 250, description: 'Car payment', recurring: true, frequency: 'monthly', categoryId: 'transport' },
+  ]
+}
+
+function seedGoals(): FinancialGoal[] {
+  const inTwoYears = new Date()
+  inTwoYears.setFullYear(inTwoYears.getFullYear() + 2)
+  return [
+    { id: createId(), name: 'Emergency Fund', kind: 'emergency_fund', targetAmount: 24000, currentAmount: 15000, monthlyContribution: 400, notes: '6 months of expenses' },
+    { id: createId(), name: 'House Down Payment', kind: 'down_payment', targetAmount: 80000, currentAmount: 22000, targetDate: inTwoYears.toISOString().slice(0, 10), monthlyContribution: 1500 },
+    { id: createId(), name: 'Iceland Trip', kind: 'vacation', targetAmount: 6000, currentAmount: 1200, monthlyContribution: 300 },
+  ]
+}
+
+function seedSinkingFunds(): SinkingFund[] {
+  const dec = new Date()
+  dec.setMonth(11, 15)
+  return [
+    { id: createId(), name: 'Holiday gifts', targetAmount: 1500, currentAmount: 500, dueDate: dec.toISOString().slice(0, 10), monthlyContribution: 125 },
+    { id: createId(), name: 'Car insurance (6mo)', targetAmount: 900, currentAmount: 300, monthlyContribution: 150 },
+    { id: createId(), name: 'Annual subscriptions', targetAmount: 400, currentAmount: 200, monthlyContribution: 35 },
+  ]
+}
+
+function seedInsurance(): InsurancePolicy[] {
+  return [
+    { id: createId(), name: 'Term Life', kind: 'life', provider: 'Haven Life', premium: 28, premiumFrequency: 'monthly', coverageAmount: 500000, beneficiary: 'Spouse', notes: '20-year term' },
+    { id: createId(), name: 'Auto', kind: 'auto', provider: 'Geico', premium: 165, premiumFrequency: 'monthly', coverageAmount: 100000 },
+    { id: createId(), name: 'Renters', kind: 'home', provider: 'Lemonade', premium: 22, premiumFrequency: 'monthly', coverageAmount: 40000 },
+    { id: createId(), name: 'Health (employer)', kind: 'health', provider: 'BCBS', premium: 300, premiumFrequency: 'monthly', coverageAmount: 0 },
+  ]
+}
+
+function seedCreditScores(): CreditScoreEntry[] {
+  const out: CreditScoreEntry[] = []
+  const now = new Date()
+  const scores = [742, 748, 755, 761, 758, 764]
+  for (let i = 0; i < scores.length; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - (scores.length - 1 - i), 1)
+    out.push({ id: createId(), date: d.toISOString().slice(0, 10), score: scores[i], bureau: 'experian' })
+  }
+  return out
 }
 
 interface FinanceStore extends AppState {
@@ -276,6 +346,29 @@ interface FinanceStore extends AppState {
   addStockTransaction: (tx: Omit<StockTransaction, 'id'>) => void
   updateStockTransaction: (id: string, partial: Partial<StockTransaction>) => void
   removeStockTransaction: (id: string) => void
+  // cash flow
+  addCashFlow: (entry: Omit<CashFlowEntry, 'id'>) => void
+  updateCashFlow: (id: string, partial: Partial<CashFlowEntry>) => void
+  removeCashFlow: (id: string) => void
+  // goals
+  addGoal: (goal: Omit<FinancialGoal, 'id'>) => void
+  updateGoal: (id: string, partial: Partial<FinancialGoal>) => void
+  removeGoal: (id: string) => void
+  // sinking funds
+  addSinkingFund: (fund: Omit<SinkingFund, 'id'>) => void
+  updateSinkingFund: (id: string, partial: Partial<SinkingFund>) => void
+  removeSinkingFund: (id: string) => void
+  // insurance
+  addInsurance: (policy: Omit<InsurancePolicy, 'id'>) => void
+  updateInsurance: (id: string, partial: Partial<InsurancePolicy>) => void
+  removeInsurance: (id: string) => void
+  // credit score
+  addCreditScore: (entry: Omit<CreditScoreEntry, 'id'>) => void
+  updateCreditScore: (id: string, partial: Partial<CreditScoreEntry>) => void
+  removeCreditScore: (id: string) => void
+  // full backup/restore
+  exportFullState: () => string
+  importFullState: (raw: string) => void
 }
 
 const initialScenario = createScenario()
@@ -710,6 +803,101 @@ export const useFinanceStore = create<FinanceStore>()(
           ...s,
           stockTransactions: (s.stockTransactions ?? []).filter((t) => t.id !== id),
         })),
+
+      addCashFlow: (entry) =>
+        get().updateActiveScenario((s) => ({
+          ...s,
+          cashFlowEntries: [...(s.cashFlowEntries ?? []), { ...entry, id: createId() }],
+        })),
+      updateCashFlow: (id, partial) =>
+        get().updateActiveScenario((s) => ({
+          ...s,
+          cashFlowEntries: (s.cashFlowEntries ?? []).map((e) => (e.id === id ? { ...e, ...partial } : e)),
+        })),
+      removeCashFlow: (id) =>
+        get().updateActiveScenario((s) => ({
+          ...s,
+          cashFlowEntries: (s.cashFlowEntries ?? []).filter((e) => e.id !== id),
+        })),
+
+      addGoal: (goal) =>
+        get().updateActiveScenario((s) => ({
+          ...s,
+          goals: [...(s.goals ?? []), { ...goal, id: createId() }],
+        })),
+      updateGoal: (id, partial) =>
+        get().updateActiveScenario((s) => ({
+          ...s,
+          goals: (s.goals ?? []).map((g) => (g.id === id ? { ...g, ...partial } : g)),
+        })),
+      removeGoal: (id) =>
+        get().updateActiveScenario((s) => ({
+          ...s,
+          goals: (s.goals ?? []).filter((g) => g.id !== id),
+        })),
+
+      addSinkingFund: (fund) =>
+        get().updateActiveScenario((s) => ({
+          ...s,
+          sinkingFunds: [...(s.sinkingFunds ?? []), { ...fund, id: createId() }],
+        })),
+      updateSinkingFund: (id, partial) =>
+        get().updateActiveScenario((s) => ({
+          ...s,
+          sinkingFunds: (s.sinkingFunds ?? []).map((f) => (f.id === id ? { ...f, ...partial } : f)),
+        })),
+      removeSinkingFund: (id) =>
+        get().updateActiveScenario((s) => ({
+          ...s,
+          sinkingFunds: (s.sinkingFunds ?? []).filter((f) => f.id !== id),
+        })),
+
+      addInsurance: (policy) =>
+        get().updateActiveScenario((s) => ({
+          ...s,
+          insurancePolicies: [...(s.insurancePolicies ?? []), { ...policy, id: createId() }],
+        })),
+      updateInsurance: (id, partial) =>
+        get().updateActiveScenario((s) => ({
+          ...s,
+          insurancePolicies: (s.insurancePolicies ?? []).map((p) => (p.id === id ? { ...p, ...partial } : p)),
+        })),
+      removeInsurance: (id) =>
+        get().updateActiveScenario((s) => ({
+          ...s,
+          insurancePolicies: (s.insurancePolicies ?? []).filter((p) => p.id !== id),
+        })),
+
+      addCreditScore: (entry) =>
+        get().updateActiveScenario((s) => ({
+          ...s,
+          creditScoreHistory: [...(s.creditScoreHistory ?? []), { ...entry, id: createId() }],
+        })),
+      updateCreditScore: (id, partial) =>
+        get().updateActiveScenario((s) => ({
+          ...s,
+          creditScoreHistory: (s.creditScoreHistory ?? []).map((c) => (c.id === id ? { ...c, ...partial } : c)),
+        })),
+      removeCreditScore: (id) =>
+        get().updateActiveScenario((s) => ({
+          ...s,
+          creditScoreHistory: (s.creditScoreHistory ?? []).filter((c) => c.id !== id),
+        })),
+
+      exportFullState: () => {
+        const { scenarios, activeScenarioId, hasOnboarded, priceCache } = get()
+        return JSON.stringify({ scenarios, activeScenarioId, hasOnboarded, priceCache }, null, 2)
+      },
+      importFullState: (raw) => {
+        const parsed = JSON.parse(raw) as AppState
+        if (!Array.isArray(parsed.scenarios)) throw new Error('Invalid backup: scenarios missing')
+        set({
+          scenarios: parsed.scenarios.map(migrateScenario),
+          activeScenarioId: parsed.activeScenarioId ?? parsed.scenarios[0].id,
+          hasOnboarded: parsed.hasOnboarded ?? true,
+          priceCache: parsed.priceCache ?? {},
+        })
+      },
     }),
     {
       name: 'midnight-ledger-v3',

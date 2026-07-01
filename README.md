@@ -27,6 +27,7 @@ Open **http://localhost:5173**
 - Savings rate, FI progress, CoastFI progress
 - Asset allocation pie chart (customizable categories)
 - Net worth projection chart
+- **Contribution-limits YTD panel** — 401(k), IRA, HSA usage vs 2026 IRS limits (with age 50/55 catch-up), with "nearing limit" and "exceeded" warnings
 
 ### Net Worth (`/net-worth`)
 - Hierarchical line-item tree (sections → groups → accounts) split into assets/liabilities
@@ -58,6 +59,7 @@ Open **http://localhost:5173**
 - CoastFI timeline chart
 - Success probability estimate
 - Contribution impact analysis
+- **Target-age back-solver** — enter a desired retirement age, get the monthly savings required to hit FIRE by that age
 
 ### Tax Planning (`/tax`)
 - Retirement withdrawal tax simulator (traditional / Roth / brokerage buckets)
@@ -82,6 +84,40 @@ Open **http://localhost:5173**
 - Buy / sell / dividend stock transactions
 - CSV import parser
 - Applies to cost basis via the lots engine
+- **Recurring weekly batches** for DCA / recurring buys (1–52 weeks)
+
+### Cash Flow (`/cash-flow`) *(new)*
+- Recurring & one-off income / expense / transfer ledger
+- Frequencies: once, weekly, biweekly, monthly, quarterly, yearly
+- **This-month summary** (income, expenses, net)
+- **Upcoming bills** (next 30 days) with due dates and amounts
+- **Last-6-months** monthly cash-flow rollup
+- Category tagging (housing, food, utilities, transport, entertainment, personal, salary, other)
+
+### Goals & Sinking Funds (`/goals`) *(new)*
+- **Financial goals** with progress gauges (emergency fund, down payment, vacation, car, wedding, other)
+- Target amount, current amount, monthly contribution, target date
+- Auto-calculated "months to completion" at current pace
+- **Emergency fund health check** — coverage in months of last-month expenses
+- **Sinking funds** for known future expenses (holiday gifts, annual insurance, subscriptions) with progress bars
+
+### Insurance (`/insurance`) *(new)*
+- Policy tracker: life, disability, health, auto, home / renters, umbrella, other
+- Premium + frequency (monthly / quarterly / yearly), annualized totals
+- Coverage amount, provider, renewal date, beneficiary, policy number
+- Rollup: total annual premiums and total coverage
+
+### Credit & Interest (`/credit`) *(new)*
+- Credit-score history with inline SVG trend chart (bureau: Equifax / Experian / TransUnion / other)
+- Score band (Exceptional / Very Good / Good / Fair / Poor)
+- Trend delta from first-logged score
+- **Estimated interest paid YTD** across all liability accounts
+
+### Tax-Loss Harvesting (`/tax-loss-harvest`) *(new)*
+- Surfaces unrealized-loss **lots** in taxable accounts (brokerage / ESPP / crypto)
+- Short-term vs long-term classification (holding period)
+- Rollup: total loss, ST loss, LT loss, candidate count
+- Wash-sale reminder
 
 ### Mortgage (`/mortgage`)
 - Amortization analyzer
