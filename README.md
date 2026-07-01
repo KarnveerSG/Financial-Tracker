@@ -113,6 +113,16 @@ Open **http://localhost:5173**
 - Trend delta from first-logged score
 - **Estimated interest paid YTD** across all liability accounts
 
+### Retirement Toolkit (`/retirement`) *(new)*
+Six tabs, all data-driven off scenario state:
+
+- **RMDs** — projects required minimum distributions from age 73 through life expectancy using IRS Uniform Lifetime divisors. Shows first-year RMD, total lifetime RMDs, year-by-year balance and withdrawal.
+- **Roth Conversion Ladder** — multi-year ladder plan. Enter annual conversion amount, number of years, and other taxable income; see per-year federal + state tax owed, net moved to Roth, and running total converted.
+- **Quarterly Tax Estimates** — straight-line quarterly payment schedule with IRS due dates (Q1 4/15, Q2 6/15, Q3 9/15, Q4 next-year 1/15). Federal + state + self-employment (15.3% on 92.35%).
+- **Social Security Claiming** — compares age 62 / 67 (FRA) / 70 lifetime benefit to a chosen horizon. Highlights best claim age. Uses 70% / 100% / 124% of PIA.
+- **Healthcare Bridge (pre-Medicare)** — cost projection for retirees between retirement age and age-65 Medicare eligibility. Configurable premium, out-of-pocket, and medical-inflation rate.
+- **Withdrawal Sequencing** — suggested order (taxable → traditional → Roth) with per-bucket tax estimates. Auto-pulls bucket balances from scenario accounts by tax treatment.
+
 ### Tax-Loss Harvesting (`/tax-loss-harvest`) *(new)*
 - Surfaces unrealized-loss **lots** in taxable accounts (brokerage / ESPP / crypto)
 - Short-term vs long-term classification (holding period)

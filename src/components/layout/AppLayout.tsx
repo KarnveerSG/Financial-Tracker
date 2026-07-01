@@ -14,6 +14,7 @@ const NAV = [
   { to: '/credit', label: 'Credit', icon: '◔' },
   { to: '/insurance', label: 'Insurance', icon: '⛨' },
   { to: '/fire', label: 'FIRE & CoastFI', icon: '◎' },
+  { to: '/retirement', label: 'Retirement Toolkit', icon: '⚭' },
   { to: '/tax', label: 'Tax Planning', icon: '◫' },
   { to: '/tax-loss-harvest', label: 'Tax-Loss Harvest', icon: '▼' },
   { to: '/paycheck', label: 'Paycheck', icon: '◧' },

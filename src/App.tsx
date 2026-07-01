@@ -18,6 +18,7 @@ import { GoalsPage } from './pages/GoalsPage'
 import { InsurancePage } from './pages/InsurancePage'
 import { CreditPage } from './pages/CreditPage'
 import { TaxLossHarvestPage } from './pages/TaxLossHarvestPage'
+import { RetirementPage } from './pages/RetirementPage'
 import { useFinanceStore } from './store/useFinanceStore'
 import { isElectronFile } from './lib/isElectron'
 
@@ -131,6 +132,7 @@ function AppRoutes() {
       <Route path="/insurance" element={<Protected><InsurancePage /></Protected>} />
       <Route path="/credit" element={<Protected><CreditPage /></Protected>} />
       <Route path="/tax-loss-harvest" element={<Protected><TaxLossHarvestPage /></Protected>} />
+      <Route path="/retirement" element={<Protected><RetirementPage /></Protected>} />
       <Route path="/analytics" element={<Protected><Suspense fallback={<RouteFallback />}><AnalyticsPage /></Suspense></Protected>} />
       <Route path="/analytics/compare" element={<Protected><Suspense fallback={<RouteFallback />}><CompareScenariosPage /></Suspense></Protected>} />
       <Route path="/settings" element={<Protected><SettingsPage /></Protected>} />
