@@ -7,6 +7,7 @@ import {
   buildCoastFiTimeline,
   calculateCoastFiResults,
   calculateFireResults,
+  calculateRequiredSavingsForTargetAge,
   calculateWithdrawalResults,
   contributionImpact,
   estimateFireProbability,
@@ -21,6 +22,7 @@ export function FirePage() {
   const updateAssumptions = useFinanceStore((s) => s.updateAssumptions)
   const { fireSettings, profile, assumptions } = scenario
   const [extraContrib, setExtraContrib] = useState(500)
+  const [targetAge, setTargetAge] = useState(scenario.fireSettings.desiredRetirementAge)
 
   const fire = useMemo(() => calculateFireResults(scenario), [scenario])
   const coast = useMemo(() => calculateCoastFiResults(scenario), [scenario])
@@ -28,12 +30,49 @@ export function FirePage() {
   const probability = useMemo(() => estimateFireProbability(scenario, 300), [scenario])
   const impact = useMemo(() => contributionImpact(scenario, extraContrib), [scenario, extraContrib])
   const timeline = useMemo(() => buildCoastFiTimeline(scenario).filter((_, i) => i % 3 === 0), [scenario])
+  const targetPlan = useMemo(() => calculateRequiredSavingsForTargetAge(scenario, targetAge), [scenario, targetAge])
 
   return (
     <div>
       <PageHeader title="FIRE & CoastFI" subtitle="Financial independence, withdrawal planning, and coast calculations" />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <SectionCard title="Plan for a target retirement age">
+        <div className="flex flex-wrap items-center gap-4">
+          <label className="text-sm">
+            <span className="mr-2 text-ledger-muted">Target age:</span>
+            <input
+              type="number"
+              value={targetAge}
+              min={profile.currentAge + 1}
+              max={profile.lifeExpectancy}
+              onChange={(e) => setTargetAge(+e.target.value)}
+              className="input-field inline-block w-24 tabular-nums"
+            />
+          </label>
+          <div className="text-sm text-ledger-muted">
+            {targetPlan.yearsAvailable > 0 ? `${targetPlan.yearsAvailable} years from now` : 'already there'}
+          </div>
+          <div className="rounded-xl bg-ledger-bg/50 px-4 py-2 text-sm">
+            <span className="text-ledger-muted">Required monthly savings: </span>
+            <span className="font-medium tabular-nums text-ledger-gold">
+              {formatCurrency(targetPlan.monthlyRequired, profile.currency)}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => updateFireSettings({ desiredRetirementAge: targetAge })}
+            className="btn-secondary text-sm"
+          >
+            Save as desired retirement age
+          </button>
+        </div>
+        <p className="mt-2 text-xs text-ledger-muted">
+          Back-solves how much you need to save monthly (on top of current portfolio growth) to hit your FIRE number by this age.
+          Current portfolio growing at {(assumptions.annualReturnRate - assumptions.inflationRate).toFixed(1)}% real return.
+        </p>
+      </SectionCard>
+
+      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard label="FIRE Number" value={formatCurrency(fire.fireNumber, profile.currency)} />
         <MetricCard label="CoastFI Number" value={formatCurrency(coast.coastFiNumber, profile.currency)} />
         <MetricCard

@@ -606,11 +606,22 @@ export function AccountsPage() {
               <div key={account.id} className="card flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <p className="font-medium">{account.name}</p>
-                  <p className="text-sm text-ledger-muted">
-                    {ACCOUNT_TYPES.find((t) => t.value === account.accountType)?.label}
-                    {' · '}{account.taxTreatment}
-                    {account.isLiability && ' · Liability'}
-                    {account.holdings?.length > 0 && ` · ${account.holdings.length} holding${account.holdings.length > 1 ? 's' : ''}`}
+                  <p className="flex flex-wrap items-center gap-1 text-sm text-ledger-muted">
+                    <span>{ACCOUNT_TYPES.find((t) => t.value === account.accountType)?.label}</span>
+                    <span>·</span>
+                    <select
+                      value={account.taxTreatment}
+                      onChange={(e) => updateAccount(account.id, { taxTreatment: e.target.value as Account['taxTreatment'] })}
+                      className="bg-transparent text-ledger-muted underline decoration-dotted hover:text-ledger-gold"
+                      title="Change tax treatment"
+                    >
+                      <option value="pretax">pretax</option>
+                      <option value="roth">roth</option>
+                      <option value="taxable">taxable</option>
+                      <option value="none">none</option>
+                    </select>
+                    {account.isLiability && <span>· Liability</span>}
+                    {account.holdings?.length > 0 && <span>· {account.holdings.length} holding{account.holdings.length > 1 ? 's' : ''}</span>}
                   </p>
                   {gainSummary && gainSummary.gain !== 0 && (
                     <span

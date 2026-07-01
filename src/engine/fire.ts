@@ -23,6 +23,36 @@ export interface CoastFiResults {
   requiredFutureReturn: number
 }
 
+/** Given a target retirement age, back-solve the monthly savings needed to hit the FIRE number by then. */
+export function calculateRequiredSavingsForTargetAge(
+  scenario: Scenario,
+  targetAge: number
+): { monthlyRequired: number; feasible: boolean; yearsAvailable: number; fireNumber: number } {
+  const { accounts, profile, assumptions, fireSettings } = scenario
+  const portfolio = getInvestableAssets(accounts)
+  const fireNumber = calculateFireNumber(fireSettings.annualSpending, fireSettings.withdrawalRate)
+  const yearsAvailable = Math.max(0, targetAge - profile.currentAge)
+  const realReturn = (assumptions.annualReturnRate - assumptions.inflationRate) / 100
+
+  if (yearsAvailable <= 0) {
+    return { monthlyRequired: 0, feasible: portfolio >= fireNumber, yearsAvailable: 0, fireNumber }
+  }
+
+  const growthOfPortfolio = portfolio * Math.pow(1 + realReturn, yearsAvailable)
+  const gap = fireNumber - growthOfPortfolio
+  if (gap <= 0) {
+    return { monthlyRequired: 0, feasible: true, yearsAvailable, fireNumber }
+  }
+
+  let annualRequired: number
+  if (Math.abs(realReturn) < 1e-6) {
+    annualRequired = gap / yearsAvailable
+  } else {
+    annualRequired = (gap * realReturn) / (Math.pow(1 + realReturn, yearsAvailable) - 1)
+  }
+  return { monthlyRequired: Math.max(0, annualRequired / 12), feasible: true, yearsAvailable, fireNumber }
+}
+
 export interface WithdrawalResults {
   withdrawalRate: number
   annualSpending: number

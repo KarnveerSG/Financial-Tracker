@@ -23,6 +23,8 @@ export function TransactionsPage() {
     pricePerShare: '',
     amount: '',
     notes: '',
+    recurring: false,
+    recurWeeks: '4',
   })
 
   const submit = () => {
@@ -32,16 +34,23 @@ export function TransactionsPage() {
     const amount = parseFloat(form.amount) || shares * price
     if (form.kind !== 'dividend' && (!form.ticker.trim() || shares <= 0)) return
     if (form.kind === 'dividend' && amount <= 0) return
-    addStockTransaction({
-      date: form.date,
-      accountId: form.accountId,
-      ticker: form.ticker.trim().toUpperCase(),
-      kind: form.kind,
-      shares,
-      pricePerShare: price,
-      amount: form.kind === 'dividend' ? amount : shares * price,
-      notes: form.notes,
-    })
+
+    const weeks = form.recurring ? Math.max(1, Math.min(52, parseInt(form.recurWeeks, 10) || 1)) : 1
+    const baseDate = new Date(form.date)
+    for (let i = 0; i < weeks; i++) {
+      const d = new Date(baseDate)
+      d.setDate(d.getDate() + i * 7)
+      addStockTransaction({
+        date: d.toISOString().slice(0, 10),
+        accountId: form.accountId,
+        ticker: form.ticker.trim().toUpperCase(),
+        kind: form.kind,
+        shares,
+        pricePerShare: price,
+        amount: form.kind === 'dividend' ? amount : shares * price,
+        notes: form.notes + (form.recurring ? ` (week ${i + 1}/${weeks})` : ''),
+      })
+    }
     setForm({ ...form, ticker: '', shares: '', pricePerShare: '', amount: '', notes: '' })
   }
 
@@ -115,9 +124,22 @@ export function TransactionsPage() {
             <label className="mb-1 block text-xs text-ledger-muted">Notes</label>
             <input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="input-field text-sm" />
           </div>
+          <div className="md:col-span-2 flex items-center gap-3">
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={form.recurring} onChange={(e) => setForm({ ...form, recurring: e.target.checked })} />
+              Recurring weekly
+            </label>
+            {form.recurring && (
+              <label className="flex items-center gap-2 text-sm">
+                <span className="text-ledger-muted">for</span>
+                <input type="number" min="1" max="52" value={form.recurWeeks} onChange={(e) => setForm({ ...form, recurWeeks: e.target.value })} className="input-field w-20 text-sm" />
+                <span className="text-ledger-muted">weeks</span>
+              </label>
+            )}
+          </div>
         </div>
         <div className="mt-3 flex justify-end">
-          <button type="button" onClick={submit} className="btn-primary text-sm">Add transaction</button>
+          <button type="button" onClick={submit} className="btn-primary text-sm">Add transaction{form.recurring ? 's' : ''}</button>
         </div>
       </SectionCard>
 

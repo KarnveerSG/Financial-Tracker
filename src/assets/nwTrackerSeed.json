@@ -62,7 +62,7 @@
       "parentId": "seed_6",
       "kind": "account",
       "side": "asset",
-      "accountType": "traditional_ira",
+      "accountType": "roth_ira",
       "sortOrder": 6,
       "includeInTotal": false
     },
@@ -72,7 +72,7 @@
       "parentId": "seed_6",
       "kind": "account",
       "side": "asset",
-      "accountType": "traditional_ira",
+      "accountType": "roth_ira",
       "sortOrder": 7,
       "includeInTotal": false
     },
@@ -318,7 +318,7 @@
       "parentId": "seed_28",
       "kind": "account",
       "side": "liability",
-      "accountType": "traditional_ira",
+      "accountType": "roth_ira",
       "sortOrder": 32,
       "includeInTotal": true
     }
