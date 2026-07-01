@@ -13,6 +13,7 @@ import type {
   Scenario,
   ScenarioUiState,
   StockHolding,
+  StockTransaction,
   StressScenarioInputs,
   TaxSimulatorInputs,
   UserProfile,
@@ -33,6 +34,8 @@ import {
   mapAccountsToSnapshotBalances,
 } from '../engine/networth'
 import { fetchQuotes } from '../lib/quoteClient'
+import { buildNwTrackerSeed } from '../engine/nwSeedLoader'
+import { applyTransactionToAccounts } from '../engine/transactions'
 
 const SCHEMA_VERSION = 4
 
@@ -256,6 +259,7 @@ interface FinanceStore extends AppState {
   toggleLightMode: () => void
   getActiveScenario: () => Scenario
   importNetWorthFromXlsx: (buffer: ArrayBuffer) => Promise<void>
+  loadNwTrackerSeed: () => void
   setNetWorthData: (lineItems: NetWorthLineItem[], snapshots: NetWorthSnapshot[]) => void
   addNetWorthSnapshot: (date: string, balances?: Record<string, number>) => void
   updateNetWorthSnapshot: (id: string, partial: Partial<Pick<NetWorthSnapshot, 'date' | 'balances'>>) => void
@@ -269,6 +273,9 @@ interface FinanceStore extends AppState {
   updateMarketData: (partial: Partial<UserProfile['marketData']>) => void
   refreshPrices: () => Promise<void>
   clearPriceCache: () => void
+  addStockTransaction: (tx: Omit<StockTransaction, 'id'>) => void
+  updateStockTransaction: (id: string, partial: Partial<StockTransaction>) => void
+  removeStockTransaction: (id: string) => void
 }
 
 const initialScenario = createScenario()
@@ -496,6 +503,16 @@ export const useFinanceStore = create<FinanceStore>()(
           profile: { ...s.profile, lightMode: !s.profile.lightMode },
         })),
 
+      loadNwTrackerSeed: () => {
+        const scenario = createScenario('NW Tracker')
+        const seed = buildNwTrackerSeed()
+        scenario.netWorthLineItems = seed.lineItems
+        scenario.netWorthSnapshots = seed.snapshots
+        scenario.accounts = seed.accounts
+        scenario.profile.marketData = { ...scenario.profile.marketData, livePricesEnabled: true, quoteProvider: 'yahoo' }
+        set({ scenarios: [scenario], activeScenarioId: scenario.id, hasOnboarded: true })
+      },
+
       importNetWorthFromXlsx: async (buffer) => {
         const { parseNwTrackerXlsx } = await import('../engine/networthXlsx')
         const { lineItems, snapshots } = await parseNwTrackerXlsx(buffer)
@@ -670,6 +687,29 @@ export const useFinanceStore = create<FinanceStore>()(
       },
 
       clearPriceCache: () => set({ priceCache: {} }),
+
+      addStockTransaction: (tx) => {
+        const txn: StockTransaction = { ...tx, id: createId(), ticker: tx.ticker.trim().toUpperCase() }
+        get().updateActiveScenario((s) => {
+          const nextTxs = [...(s.stockTransactions ?? []), txn]
+          const nextAccounts = applyTransactionToAccounts(s.accounts, txn)
+          return { ...s, stockTransactions: nextTxs, accounts: nextAccounts }
+        })
+      },
+
+      updateStockTransaction: (id, partial) =>
+        get().updateActiveScenario((s) => ({
+          ...s,
+          stockTransactions: (s.stockTransactions ?? []).map((t) =>
+            t.id === id ? { ...t, ...partial, ticker: (partial.ticker ?? t.ticker).trim().toUpperCase() } : t
+          ),
+        })),
+
+      removeStockTransaction: (id) =>
+        get().updateActiveScenario((s) => ({
+          ...s,
+          stockTransactions: (s.stockTransactions ?? []).filter((t) => t.id !== id),
+        })),
     }),
     {
       name: 'midnight-ledger-v3',

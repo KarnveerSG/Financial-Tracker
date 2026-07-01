@@ -10,6 +10,9 @@ import { TaxPage } from './pages/TaxPage'
 import { PaycheckPage } from './pages/PaycheckPage'
 import { BudgetPage } from './pages/BudgetPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { TransactionsPage } from './pages/TransactionsPage'
+import { MortgagePage } from './pages/MortgagePage'
+import { DebtPayoffPage } from './pages/DebtPayoffPage'
 import { useFinanceStore } from './store/useFinanceStore'
 import { isElectronFile } from './lib/isElectron'
 
@@ -60,6 +63,23 @@ function PersistGate({ children }: { children: ReactNode }) {
   return children
 }
 
+function AutoPriceRefresh() {
+  const scenario = useFinanceStore((s) => s.getActiveScenario())
+  const refreshPrices = useFinanceStore((s) => s.refreshPrices)
+
+  useEffect(() => {
+    const md = scenario.profile.marketData
+    if (!md.livePricesEnabled) return
+    const last = md.lastPriceRefresh ? new Date(md.lastPriceRefresh).getTime() : 0
+    const age = Date.now() - last
+    if (age > 12 * 60 * 60 * 1000) {
+      void refreshPrices()
+    }
+  }, [scenario.profile.marketData, refreshPrices])
+
+  return null
+}
+
 function ThemeSync() {
   const lightMode = useFinanceStore((s) => {
     const scenario = s.scenarios.find((x) => x.id === s.activeScenarioId) ?? s.scenarios[0]
@@ -98,6 +118,9 @@ function AppRoutes() {
       <Route path="/tax" element={<Protected><TaxPage /></Protected>} />
       <Route path="/paycheck" element={<Protected><PaycheckPage /></Protected>} />
       <Route path="/budget" element={<Protected><BudgetPage /></Protected>} />
+      <Route path="/transactions" element={<Protected><TransactionsPage /></Protected>} />
+      <Route path="/mortgage" element={<Protected><MortgagePage /></Protected>} />
+      <Route path="/debt-payoff" element={<Protected><DebtPayoffPage /></Protected>} />
       <Route path="/analytics" element={<Protected><Suspense fallback={<RouteFallback />}><AnalyticsPage /></Suspense></Protected>} />
       <Route path="/analytics/compare" element={<Protected><Suspense fallback={<RouteFallback />}><CompareScenariosPage /></Suspense></Protected>} />
       <Route path="/settings" element={<Protected><SettingsPage /></Protected>} />
@@ -111,6 +134,7 @@ function App() {
     <PersistGate>
       <AppRouter>
         <ThemeSync />
+        <AutoPriceRefresh />
         <AppRoutes />
       </AppRouter>
     </PersistGate>

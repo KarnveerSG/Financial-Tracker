@@ -6,7 +6,7 @@ import { useFinanceStore } from '../store/useFinanceStore'
 
 export function OnboardingPage() {
   const navigate = useNavigate()
-  const { loadDemo, completeOnboarding, hasOnboarded } = useFinanceStore()
+  const { loadDemo, completeOnboarding, hasOnboarded, loadNwTrackerSeed } = useFinanceStore()
 
   useEffect(() => {
     if (hasOnboarded) navigate('/dashboard', { replace: true })
@@ -19,6 +19,11 @@ export function OnboardingPage() {
 
   const tryDemo = () => {
     flushSync(() => loadDemo())
+    navigate('/dashboard', { replace: true })
+  }
+
+  const loadMyData = () => {
+    flushSync(() => loadNwTrackerSeed())
     navigate('/dashboard', { replace: true })
   }
 
@@ -56,8 +61,11 @@ export function OnboardingPage() {
         transition={{ delay: 0.3 }}
         className="mt-10 flex flex-col gap-3 sm:flex-row"
       >
-        <button type="button" onClick={start} className="btn-primary">
-          Get started
+        <button type="button" onClick={loadMyData} className="btn-primary">
+          Load my NW Tracker data
+        </button>
+        <button type="button" onClick={start} className="btn-secondary">
+          Start blank
         </button>
         <button type="button" onClick={tryDemo} className="btn-secondary">
           Explore demo

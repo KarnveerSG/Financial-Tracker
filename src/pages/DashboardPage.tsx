@@ -1,9 +1,12 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { PageHeader } from '../components/layout/AppLayout'
 import { MetricCard, ProgressGauge, SectionCard } from '../components/shared/MetricCard'
 import { AllocationPieChart, LineTrendChart } from '../components/charts/FinanceCharts'
+import { HoldingsSetupModal } from '../components/shared/HoldingsSetupModal'
+import { WhatIOwnPanel } from '../components/shared/WhatIOwnPanel'
 import { useFinanceStore } from '../store/useFinanceStore'
+import { HOLDINGS_ACCOUNT_TYPES } from '../types'
 import {
   computeDashboardMetrics,
   getAllocationBreakdown,
@@ -13,9 +16,34 @@ import { calculateFireResults, calculateCoastFiResults } from '../engine/fire'
 import { buildNetWorthGrowthSeries } from '../engine/projections'
 import { formatCurrency, formatPercent } from '../engine/format'
 
+const HOLDINGS_PROMPT_KEY = 'midnight-ledger-holdings-prompt-dismissed'
+
 export function DashboardPage() {
   const scenario = useFinanceStore((s) => s.getActiveScenario())
   const { profile, accounts, allocationCategories } = scenario
+
+  const eligibleForHoldings = useMemo(
+    () =>
+      accounts.filter(
+        (a) => !a.isLiability && [...HOLDINGS_ACCOUNT_TYPES, '401k', 'roth_401k', 'traditional_ira', 'roth_ira', 'hsa'].includes(a.accountType)
+      ),
+    [accounts]
+  )
+  const hasAnyHoldings = accounts.some((a) => (a.holdings ?? []).length > 0)
+  const [holdingsModalOpen, setHoldingsModalOpen] = useState(false)
+
+  useEffect(() => {
+    if (typeof localStorage === 'undefined') return
+    const dismissed = localStorage.getItem(HOLDINGS_PROMPT_KEY) === '1'
+    if (!dismissed && eligibleForHoldings.length > 0 && !hasAnyHoldings) {
+      setHoldingsModalOpen(true)
+    }
+  }, [eligibleForHoldings.length, hasAnyHoldings])
+
+  const closeModal = () => {
+    setHoldingsModalOpen(false)
+    if (typeof localStorage !== 'undefined') localStorage.setItem(HOLDINGS_PROMPT_KEY, '1')
+  }
 
   const fire = useMemo(() => calculateFireResults(scenario), [scenario])
   const coast = useMemo(() => calculateCoastFiResults(scenario), [scenario])
@@ -101,6 +129,20 @@ export function DashboardPage() {
           />
         </SectionCard>
       </div>
+
+      <div className="mt-8">
+        <WhatIOwnPanel />
+      </div>
+
+      {eligibleForHoldings.length > 0 && !hasAnyHoldings && (
+        <div className="mt-4">
+          <button type="button" onClick={() => setHoldingsModalOpen(true)} className="btn-secondary text-sm">
+            + Add stock holdings
+          </button>
+        </div>
+      )}
+
+      <HoldingsSetupModal open={holdingsModalOpen} onClose={closeModal} />
 
       {accounts.length === 0 && (
         <motion.div

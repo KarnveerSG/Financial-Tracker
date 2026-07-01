@@ -220,6 +220,20 @@ export interface ScenarioUiState {
   netWorthManualDate: string
 }
 
+export type TransactionKind = 'buy' | 'sell' | 'dividend'
+
+export interface StockTransaction {
+  id: string
+  date: string
+  accountId: string
+  ticker: string
+  kind: TransactionKind
+  shares: number
+  pricePerShare: number
+  amount: number
+  notes?: string
+}
+
 export interface Scenario {
   id: string
   name: string
@@ -236,6 +250,7 @@ export interface Scenario {
   budgetInputs: BudgetInputs
   netWorthLineItems: NetWorthLineItem[]
   netWorthSnapshots: NetWorthSnapshot[]
+  stockTransactions?: StockTransaction[]
   uiState?: ScenarioUiState
 }
 

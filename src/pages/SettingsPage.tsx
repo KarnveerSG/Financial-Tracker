@@ -6,7 +6,9 @@ import {
   exportAppState,
   parseAppState,
 } from '../store/useFinanceStore'
-import { accountsToCsv, parseAccountsCsv } from '../engine/accounts'
+import { accountsToCsv, parseAccountsCsv, resolveAccountBalance } from '../engine/accounts'
+import { computeSnapshotTotals, getLatestEffectiveSnapshot } from '../engine/networth'
+import { formatCurrency } from '../engine/format'
 import { CURRENCIES, DEFAULT_ALLOCATION_CATEGORIES } from '../types'
 
 export function SettingsPage() {
@@ -282,8 +284,31 @@ export function SettingsPage() {
           </div>
         </SectionCard>
 
+        <SectionCard title="Data reconciliation">
+          {(() => {
+            const accountsAssets = scenario.accounts.filter((a) => !a.isLiability).reduce((s, a) => s + resolveAccountBalance(a), 0)
+            const accountsLiabs = scenario.accounts.filter((a) => a.isLiability).reduce((s, a) => s + resolveAccountBalance(a), 0)
+            const accountsNw = accountsAssets - accountsLiabs
+            const latestSnap = getLatestEffectiveSnapshot(scenario.netWorthSnapshots, scenario.netWorthLineItems)
+            const snapshotTotals = latestSnap ? computeSnapshotTotals(latestSnap, scenario.netWorthLineItems) : null
+            const diff = snapshotTotals ? accountsNw - snapshotTotals.netWorth : 0
+            const mismatch = Math.abs(diff) > 100
+            return (
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between"><span className="text-ledger-muted">Sum of account balances (net):</span><span className="tabular-nums">{formatCurrency(accountsNw, scenario.profile.currency)}</span></div>
+                <div className="flex justify-between"><span className="text-ledger-muted">Latest snapshot net worth {latestSnap ? `(${latestSnap.date})` : ''}:</span><span className="tabular-nums">{snapshotTotals ? formatCurrency(snapshotTotals.netWorth, scenario.profile.currency) : '—'}</span></div>
+                <div className={`flex justify-between font-medium ${mismatch ? 'text-ledger-danger' : 'text-emerald-400'}`}>
+                  <span>Difference:</span><span className="tabular-nums">{formatCurrency(diff, scenario.profile.currency)}</span>
+                </div>
+                {mismatch && <p className="text-xs text-ledger-muted">Snapshots are user-owned history; account balances reflect current live state. Large gaps are normal after months without recording a snapshot.</p>}
+              </div>
+            )
+          })()}
+        </SectionCard>
+
         <SectionCard title="Testing">
           <div className="flex flex-wrap gap-3">
+            <button type="button" onClick={() => state.loadNwTrackerSeed()} className="btn-secondary">Load my NW Tracker</button>
             <button type="button" onClick={loadDemo} className="btn-secondary">Load demo data</button>
             <button
               type="button"
