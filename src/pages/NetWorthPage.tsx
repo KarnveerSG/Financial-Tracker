@@ -3,12 +3,14 @@ import { PageHeader } from '../components/layout/AppLayout'
 import { MetricCard, SectionCard } from '../components/shared/MetricCard'
 import { LineTrendChart } from '../components/charts/FinanceCharts'
 import { PortfolioBreakdown } from '../components/networth/PortfolioBreakdown'
+import { LineItemTaxControls } from '../components/networth/LineItemTaxControls'
 import { SnapshotBalanceInput } from '../components/networth/SnapshotBalanceInput'
 import { useFinanceStore } from '../store/useFinanceStore'
 import {
   buildNetWorthHistorySeries,
   buildNetWorthProjectionOverlay,
   computePeriodMetrics,
+  computeRetirementTaxSplit,
   computeSnapshotTotals,
   filterSnapshotsForWindow,
   getDataThroughDate,
@@ -54,6 +56,7 @@ export function NetWorthPage() {
     recordNetWorthFromAccounts,
     addNetWorthSnapshot,
     updateNetWorthBalance,
+    updateNetWorthLineItem,
     removeNetWorthSnapshot,
     updateUiState,
   } = useFinanceStore()
@@ -92,6 +95,12 @@ export function NetWorthPage() {
   )
 
   const latestTotals = useMemo(() => getLatestSnapshotTotals(scenario), [scenario])
+
+  const latestSnapshot = effectiveSnapshots.at(-1) ?? null
+  const retirementTaxSplit = useMemo(
+    () => (latestSnapshot ? computeRetirementTaxSplit(latestSnapshot, netWorthLineItems) : null),
+    [latestSnapshot, netWorthLineItems]
+  )
 
   const rangePresets = useMemo(
     () => getDateRangePresets(netWorthSnapshots, netWorthLineItems),
@@ -351,6 +360,20 @@ export function NetWorthPage() {
               label="Total Assets"
               value={formatCurrency(latestTotals?.totalAssets ?? 0, profile.currency)}
             />
+            {retirementTaxSplit && retirementTaxSplit.pretax + retirementTaxSplit.roth > 0 && (
+              <>
+                <MetricCard
+                  label="Pre-tax Retirement"
+                  value={formatCurrency(retirementTaxSplit.pretax, profile.currency)}
+                  sub={formatPercent(retirementTaxSplit.pretaxPercent * 100)}
+                />
+                <MetricCard
+                  label="Roth / Post-tax Retirement"
+                  value={formatCurrency(retirementTaxSplit.roth, profile.currency)}
+                  sub={formatPercent(retirementTaxSplit.rothPercent * 100)}
+                />
+              </>
+            )}
           </div>
 
           <div className="mt-8">
@@ -480,7 +503,11 @@ export function NetWorthPage() {
                           className="sticky left-0 z-10 bg-ledger-surface px-3 py-1.5"
                           style={{ paddingLeft: `${indentLevel(item, netWorthLineItems) * 12 + 12}px` }}
                         >
-                          {item.name}
+                          <div>{item.name}</div>
+                          <LineItemTaxControls
+                            item={item}
+                            onUpdate={(partial) => updateNetWorthLineItem(item.id, partial)}
+                          />
                         </td>
                         {visibleSnapshots.map((snapshot, colIndex) => (
                           <td key={snapshot.id} className="px-3 py-1.5">

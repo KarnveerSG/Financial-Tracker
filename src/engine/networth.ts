@@ -13,7 +13,7 @@ import type {
   UserProfile,
 } from '../types'
 import { ACCOUNT_TYPES } from '../types'
-import { createId, todayISO } from './format'
+import { clamp, createId, todayISO } from './format'
 import { resolveAccountBalance, sumContributions } from './accounts'
 
 const LIABILITY_TOTAL_LABELS = new Set([
@@ -99,6 +99,78 @@ export function inferAccountType(name: string): AccountType | undefined {
   if (lower.includes('real estate') || lower.includes('residence') || lower.includes('rental') || lower.includes('property')) return 'real_estate'
   if (lower.includes('vehicle') || lower.includes('benz') || lower.includes('vette') || lower.includes('corvette')) return 'custom'
   return undefined
+}
+
+const IRA_ACCOUNT_TYPES = new Set<AccountType>(['roth_ira', 'traditional_ira'])
+const FOUR01K_ACCOUNT_TYPES = new Set<AccountType>(['401k', 'roth_401k'])
+
+export function isIraLineItem(item: NetWorthLineItem): boolean {
+  if (item.kind !== 'account' || item.side !== 'asset') return false
+  if (item.accountType && IRA_ACCOUNT_TYPES.has(item.accountType)) return true
+  const lower = item.name.toLowerCase()
+  return lower.includes('ira') && !lower.includes('limit')
+}
+
+export function is401kLineItem(item: NetWorthLineItem): boolean {
+  if (item.kind !== 'account' || item.side !== 'asset') return false
+  if (item.accountType && FOUR01K_ACCOUNT_TYPES.has(item.accountType)) return true
+  return item.name.toLowerCase().includes('401')
+}
+
+export function resolveIraVariant(item: NetWorthLineItem): 'roth' | 'traditional' {
+  if (item.accountType === 'traditional_ira') return 'traditional'
+  if (item.accountType === 'roth_ira') return 'roth'
+  const lower = item.name.toLowerCase()
+  if (lower.includes('traditional') || (lower.includes('trad') && lower.includes('ira'))) return 'traditional'
+  if (lower.includes('roth')) return 'roth'
+  return 'roth'
+}
+
+export function resolveLineItemRothPercent(item: NetWorthLineItem): number {
+  if (item.rothPercent != null) return clamp(item.rothPercent, 0, 100)
+  if (item.accountType === 'roth_401k') return 100
+  return 0
+}
+
+export interface RetirementTaxSplit {
+  pretax: number
+  roth: number
+  pretaxPercent: number
+  rothPercent: number
+}
+
+export function computeRetirementTaxSplit(
+  snapshot: NetWorthSnapshot,
+  lineItems: NetWorthLineItem[]
+): RetirementTaxSplit {
+  let pretax = 0
+  let roth = 0
+
+  for (const item of lineItems) {
+    if (item.kind !== 'account' || item.side !== 'asset') continue
+    const balance = snapshot.balances[item.id]
+    if (balance == null || balance === 0) continue
+
+    if (isIraLineItem(item)) {
+      if (resolveIraVariant(item) === 'roth') roth += balance
+      else pretax += balance
+      continue
+    }
+
+    if (is401kLineItem(item)) {
+      const rothShare = resolveLineItemRothPercent(item) / 100
+      roth += balance * rothShare
+      pretax += balance * (1 - rothShare)
+    }
+  }
+
+  const total = pretax + roth
+  return {
+    pretax,
+    roth,
+    pretaxPercent: total > 0 ? pretax / total : 0,
+    rothPercent: total > 0 ? roth / total : 0,
+  }
 }
 
 export function isInvestmentLineItem(item: NetWorthLineItem): boolean {

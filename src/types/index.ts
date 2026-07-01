@@ -197,6 +197,8 @@ export interface NetWorthLineItem {
   sortOrder: number
   /** When true, balance rolls into snapshot totals (matches NW Tracker Excel formulas). */
   includeInTotal?: boolean
+  /** Share of a 401(k) balance that is Roth (0–100). Pretax share is 100 − rothPercent. */
+  rothPercent?: number
 }
 
 export interface NetWorthSnapshot {

@@ -4,15 +4,20 @@ import { createDefaultAccount } from './accounts'
 import {
   buildNetWorthHistorySeries,
   computePeriodMetrics,
+  computeRetirementTaxSplit,
   computeSnapshotTotals,
   filterSnapshotsForWindow,
   getDataThroughDate,
   getEffectiveSnapshots,
   getLatestEffectiveSnapshot,
   getPortfolioBreakdown,
+  is401kLineItem,
   isInvestmentLineItem,
+  isIraLineItem,
   mapAccountsToSnapshotBalances,
   netWorthSnapshotsToCsv,
+  resolveIraVariant,
+  resolveLineItemRothPercent,
   snapshotHasData,
 } from './networth'
 import { DEFAULT_ALLOCATION_CATEGORIES } from '../types'
@@ -276,6 +281,62 @@ describe('mapAccountsToSnapshotBalances', () => {
     const { balances } = mapAccountsToSnapshotBalances(accounts, lineItems)
     expect(balances['item-roth401']).toBe(50000)
     expect(balances['item-roth']).toBe(1000)
+  })
+})
+
+describe('retirement tax classification', () => {
+  const iraRoth: NetWorthLineItem = {
+    id: 'ira-r',
+    name: 'IRA - Mine - Vanguard',
+    parentId: null,
+    kind: 'account',
+    side: 'asset',
+    accountType: 'roth_ira',
+    sortOrder: 0,
+  }
+  const iraTrad: NetWorthLineItem = {
+    id: 'ira-t',
+    name: 'IRA - Spouse',
+    parentId: null,
+    kind: 'account',
+    side: 'asset',
+    accountType: 'traditional_ira',
+    sortOrder: 1,
+  }
+  const k401: NetWorthLineItem = {
+    id: 'k401',
+    name: '401(k) - Mine',
+    parentId: null,
+    kind: 'account',
+    side: 'asset',
+    accountType: '401k',
+    rothPercent: 30,
+    sortOrder: 2,
+  }
+
+  it('detects IRA and 401k line items', () => {
+    expect(isIraLineItem(iraRoth)).toBe(true)
+    expect(is401kLineItem(k401)).toBe(true)
+    expect(isIraLineItem(fixtureLineItems()[3])).toBe(false)
+  })
+
+  it('resolves IRA variant and 401k roth percent', () => {
+    expect(resolveIraVariant(iraRoth)).toBe('roth')
+    expect(resolveIraVariant(iraTrad)).toBe('traditional')
+    expect(resolveLineItemRothPercent(k401)).toBe(30)
+    expect(resolveLineItemRothPercent({ ...k401, rothPercent: undefined, accountType: 'roth_401k' })).toBe(100)
+  })
+
+  it('splits retirement balances by tax treatment', () => {
+    const snapshot: NetWorthSnapshot = {
+      id: 's',
+      date: '2024-01-01',
+      balances: { 'ira-r': 10000, 'ira-t': 5000, k401: 20000 },
+    }
+    const split = computeRetirementTaxSplit(snapshot, [iraRoth, iraTrad, k401])
+    expect(split.roth).toBe(16000)
+    expect(split.pretax).toBe(19000)
+    expect(split.rothPercent).toBeCloseTo(16000 / 35000)
   })
 })
 
